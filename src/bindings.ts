@@ -4,6 +4,153 @@ import { invoke as __TAURI_INVOKE } from "@tauri-apps/api/core";
 
 /** Commands */
 export const commands = {
-	greet: (name: string) => __TAURI_INVOKE<string>("greet", { name }),
+	enumerateUsb: () => typedError<UsbDevice_Serialize[], string>(__TAURI_INVOKE("enumerate_usb")),
 };
+
+/* Types */
+export type CollectionKind = "Physical" | "Application" | "Logical" | "Report" | "NamedArray" | "UsageSwitch" | "UsageModifier" | { Vendor: {
+	id: number,
+} };
+
+export type ConfigDescriptor = ConfigDescriptor_Serialize | ConfigDescriptor_Deserialize;
+
+export type ConfigDescriptor_Deserialize = {
+	b_configuration_value: number,
+	i_configuration: number,
+	bm_attributes: number,
+	b_max_power: number,
+	interfaces: InterfaceDescriptor[],
+	raw_bytes?: number[],
+};
+
+export type ConfigDescriptor_Serialize = {
+	b_configuration_value: number,
+	i_configuration: number,
+	bm_attributes: number,
+	b_max_power: number,
+	interfaces: InterfaceDescriptor[],
+	raw_bytes?: number[],
+};
+
+export type DeviceDescriptor = DeviceDescriptor_Serialize | DeviceDescriptor_Deserialize;
+
+export type DeviceDescriptor_Deserialize = {
+	bcd_usb: number,
+	b_device_class: number,
+	b_device_sub_class: number,
+	b_device_protocol: number,
+	b_max_packet_size0: number,
+	id_vendor: number,
+	id_product: number,
+	bcd_device: number,
+	i_manufacturer: number,
+	i_product: number,
+	i_serial_number: number,
+	b_num_configurations: number,
+	raw_bytes?: number[],
+};
+
+export type DeviceDescriptor_Serialize = {
+	bcd_usb: number,
+	b_device_class: number,
+	b_device_sub_class: number,
+	b_device_protocol: number,
+	b_max_packet_size0: number,
+	id_vendor: number,
+	id_product: number,
+	bcd_device: number,
+	i_manufacturer: number,
+	i_product: number,
+	i_serial_number: number,
+	b_num_configurations: number,
+	raw_bytes?: number[],
+};
+
+export type EndpointDescriptor = {
+	b_endpoint_address: number,
+	bm_attributes: number,
+	w_max_packet_size: number,
+	b_interval: number,
+};
+
+export type HidInterface = HidInterface_Serialize | HidInterface_Deserialize;
+
+export type HidInterface_Deserialize = {
+	interface_number: number,
+	raw_report_descriptor: number[],
+	parsed?: HidNode[] | null,
+};
+
+export type HidInterface_Serialize = {
+	interface_number: number,
+	raw_report_descriptor: number[],
+	parsed?: HidNode[] | null,
+};
+
+export type HidIoFlags = {
+	constant: boolean,
+	variable: boolean,
+	relative: boolean,
+	wrap: boolean,
+	non_linear: boolean,
+	no_preferred: boolean,
+	null_state: boolean,
+	volatile: boolean,
+	buffered_bytes: boolean,
+};
+
+export type HidNode = { type: "UsagePage"; page_id: number; name: string } | { type: "Usage"; usage_id: number; name: string | null } | { type: "Collection"; kind: CollectionKind; children: HidNode[] } | { type: "ReportId"; id: number } | { type: "LogicalMinimum"; value: number } | { type: "LogicalMaximum"; value: number } | { type: "PhysicalMinimum"; value: number } | { type: "PhysicalMaximum"; value: number } | { type: "UnitExponent"; value: number } | { type: "Unit"; value: number } | { type: "ReportSize"; value: number } | { type: "ReportCount"; value: number } | { type: "UsageMinimum"; value: number } | { type: "UsageMaximum"; value: number } | { type: "Input"; flags: HidIoFlags } | { type: "Output"; flags: HidIoFlags } | { type: "Feature"; flags: HidIoFlags };
+
+export type InterfaceDescriptor = {
+	b_interface_number: number,
+	b_alternate_setting: number,
+	b_interface_class: number,
+	b_interface_sub_class: number,
+	b_interface_protocol: number,
+	i_interface: number,
+	endpoints: EndpointDescriptor[],
+};
+
+export type StringDescriptor = {
+	index: number,
+	value: string,
+};
+
+export type UsbDevice = UsbDevice_Serialize | UsbDevice_Deserialize;
+
+export type UsbDevice_Deserialize = {
+	location_id: string,
+	bus_number: number,
+	port_path: number[],
+	speed: UsbSpeed,
+	device_descriptor: DeviceDescriptor_Deserialize,
+	configurations: ConfigDescriptor_Deserialize[],
+	strings: StringDescriptor[],
+	hid_interfaces: HidInterface_Deserialize[],
+	children: UsbDevice_Deserialize[],
+};
+
+export type UsbDevice_Serialize = {
+	location_id: string,
+	bus_number: number,
+	port_path: number[],
+	speed: UsbSpeed,
+	device_descriptor: DeviceDescriptor_Serialize,
+	configurations: ConfigDescriptor_Serialize[],
+	strings: StringDescriptor[],
+	hid_interfaces: HidInterface_Serialize[],
+	children: UsbDevice_Serialize[],
+};
+
+export type UsbSpeed = "Low" | "Full" | "High" | "Super" | "SuperPlus" | "Unknown";
+
+/* Tauri Specta runtime */
+async function typedError<T, E>(result: Promise<T>): Promise<{ status: "ok"; data: T } | { status: "error"; error: E }> {
+    try {
+        return { status: "ok", data: await result };
+    } catch (e) {
+        if (e instanceof Error) throw e;
+        return { status: "error", error: e as any };
+    }
+}
 
