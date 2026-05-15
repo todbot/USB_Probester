@@ -24,3 +24,6 @@ usb-types = { path = "../crates/usb-types" }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 usb-collector-macos = { path = "../crates/usb-collector-macos" }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+usb-collector-linux = { path = "../crates/usb-collector-linux" }

@@ -1,5 +1,7 @@
 #[cfg(target_os = "macos")]
 use usb_collector_macos::MacCollector;
+#[cfg(target_os = "linux")]
+use usb_collector_linux::LinuxCollector;
 use usb_types::UsbDevice;
 
 #[tauri::command]
@@ -10,7 +12,12 @@ fn enumerate_usb() -> Result<Vec<UsbDevice>, String> {
         .enumerate()
         .map_err(|e| e.to_string());
 
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(target_os = "linux")]
+    return LinuxCollector::new()
+        .enumerate()
+        .map_err(|e| e.to_string());
+
+    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
     return Ok(vec![]);
 }
 

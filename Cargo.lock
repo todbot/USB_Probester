@@ -4173,6 +4173,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "usb-collector-linux"
+version = "0.1.0"
+dependencies = [
+ "hid-parser",
+ "nusb",
+ "serde",
+ "serde_json",
+ "usb-types",
+]
+
+[[package]]
 name = "usb-collector-macos"
 version = "0.1.0"
 dependencies = [
@@ -4195,6 +4206,7 @@ dependencies = [
  "tauri-build",
  "tauri-plugin-opener",
  "tauri-specta",
+ "usb-collector-linux",
  "usb-collector-macos",
  "usb-types",
 ]

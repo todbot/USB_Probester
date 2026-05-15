@@ -1,0 +1,11 @@
+[package]
+name = "usb-collector-linux"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+usb-types = { path = "../usb-types" }
+hid-parser = { path = "../hid-parser" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+nusb = "0.2.3"

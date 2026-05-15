@@ -31,11 +31,11 @@ output format and correctness.
 
 ## Status
 
-| Platform | Collector | HID Parser | Frontend UI |
-|----------|-----------|------------|-------------|
-| macOS    | ✓ working | ✓ working  | in progress |
-| Linux    | planned   | ✓ shared   | in progress |
-| Windows  | planned   | ✓ shared   | in progress |
+| Platform | Collector   | HID Parser | Frontend UI |
+|----------|-------------|------------|-------------|
+| macOS    | ✓ working   | ✓ working  | in progress |
+| Linux    | ✓ working   | ✓ shared   | in progress |
+| Windows  | planned     | ✓ shared   | in progress |
 
 ---
 
@@ -45,6 +45,7 @@ output format and correctness.
 crates/
   usb-types/            — shared Rust data model (serde + specta types)
   usb-collector-macos/  — macOS USB enumeration via nusb + ioreg HID pass
+  usb-collector-linux/  — Linux USB enumeration via nusb + sysfs parsing
   hid-parser/           — platform-agnostic HID report descriptor parser
 src-tauri/              — Tauri shell and backend commands
 src/                    — React/TypeScript frontend (in progress)
@@ -79,13 +80,32 @@ npm run tauribuild
 
 ---
 
-## Running the collectors (macOS, no UI needed)
+## Running the collectors (no UI needed)
 
-Two examples let you validate the collector and parser against real hardware
-without launching the full app:
+These examples validate the collector and HID parser against real hardware
+(or stored fixture data) without launching the full app.
+
+### Linux
 
 ```bash
-# Structured field dump — shows raw descriptor bytes, endpoint table, HID hex
+# Structured dump of all connected USB devices — descriptors, endpoints, HID
+cargo run -p usb-collector-linux --example dump_one
+
+# Parse a stored sysfs descriptor binary (no hardware required):
+#   no argument  → built-in blink(1) mk2 fixture
+#   path argument → any /sys/bus/usb/devices/<dev>/descriptors file
+cargo run -p usb-collector-linux --example from_sysfs_file
+cargo run -p usb-collector-linux --example from_sysfs_file -- /sys/bus/usb/devices/2-4/descriptors
+
+# Save a snapshot for offline testing:
+cp /sys/bus/usb/devices/2-2.3/descriptors blink1.bin
+cargo run -p usb-collector-linux --example from_sysfs_file -- blink1.bin
+```
+
+### macOS
+
+```bash
+# Structured field dump — raw descriptor bytes, endpoint table, HID hex
 cargo run -p usb-collector-macos --example dump_one
 
 # USB Prober-style text output — matches the reference fixture format
@@ -111,7 +131,26 @@ npm run clean
 
 ---
 
-## How the macOS collector works
+## How the collectors work
+
+### Linux (`crates/usb-collector-linux`)
+
+Everything comes from sysfs — no device open, no elevated privileges:
+
+1. **`nusb::list_devices()`** — provides device metadata: bus number, port
+   chain, cached string descriptors (manufacturer/product/serial), and speed.
+
+2. **`/sys/bus/usb/devices/<dev>/descriptors`** — world-readable binary file
+   containing the raw bytes of the device descriptor (18 bytes) followed by
+   the full configuration descriptor blobs, exactly as returned by the device.
+   Parsed by `crates/usb-collector-linux/src/descriptor.rs`.
+
+3. **HID report descriptors** — located at
+   `/sys/bus/usb/devices/<dev>/<dev>:<cfg>.<iface>/0003:<VID>:<PID>.<N>/report_descriptor`.
+   The `0003:` prefix identifies HID bus entries. Collected by
+   `crates/usb-collector-linux/src/hid.rs`.
+
+### macOS (`crates/usb-collector-macos`)
 
 USB enumeration uses two passes:
 
