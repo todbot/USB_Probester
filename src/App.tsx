@@ -93,18 +93,28 @@ function collectionKindLabel(kind: CollectionKind): string {
   return "Unknown";
 }
 
-function hidFlagsLabel(flags: HidIoFlags): string {
+function hidFlagsLabel(flags: HidIoFlags, kind: "input" | "output" | "feature"): string {
+  const isInput = kind === "input";
   const parts: string[] = [];
   parts.push(flags.constant ? "Constant" : "Data");
   parts.push(flags.variable ? "Variable" : "Array");
   parts.push(flags.relative ? "Relative" : "Absolute");
-  if (flags.variable) {
-    parts.push(flags.wrap ? "Wrap" : "No Wrap");
-    parts.push(flags.non_linear ? "Non Linear" : "Linear");
-    parts.push(flags.no_preferred ? "No Preferred" : "Preferred");
-    parts.push(flags.null_state ? "Null State" : "No Null Position");
-    if (flags.volatile) parts.push("Volatile");
+
+  if (isInput && !flags.variable) {
+    // Array Input: HID spec says flags 3–8 are not applicable
+    return `(${parts.join(", ")})`;
   }
+
+  parts.push(flags.wrap ? "Wrap" : "No Wrap");
+  parts.push(flags.non_linear ? "Non Linear" : "Linear");
+  parts.push(flags.no_preferred ? "No Preferred State" : "Preferred State");
+  parts.push(flags.null_state ? "Null State" : "No Null Position");
+  if (!isInput) {
+    // Volatile is not applicable to Input
+    parts.push(flags.volatile ? "Volatile" : "Nonvolatile");
+  }
+  parts.push(flags.buffered_bytes ? "Buffered Bytes" : "Bitfield");
+
   return `(${parts.join(", ")})`;
 }
 
@@ -188,10 +198,17 @@ function HidNodeView({ node }: { node: HidNode }) {
           ))}
         </TreeNode>
       );
-    case "UsagePage":
-      return <Leaf label="Usage Page" value={`(${node.name})`} />;
-    case "Usage":
-      return <Leaf label={`Usage (${node.name ?? `0x${node.usage_id.toString(16)}`})`} />;
+    case "UsagePage": {
+      const pid = node.page_id;
+      const phex = `0x${pid.toString(16).padStart(4, "0").toUpperCase()}`;
+      return <Leaf label="Usage Page" value={`(${node.name} ${phex} (${pid}))`} />;
+    }
+    case "Usage": {
+      const uid = node.usage_id;
+      const uhex = `0x${uid.toString(16).padStart(4, "0").toUpperCase()}`;
+      const lbl = node.name ? `Usage (${node.name})` : "Usage";
+      return <Leaf label={lbl} value={`${uhex} (${uid})`} />;
+    }
     case "LogicalMinimum":  return <Leaf label="Logical Minimum" value={`${node.value}`} />;
     case "LogicalMaximum":  return <Leaf label="Logical Maximum" value={`${node.value}`} />;
     case "PhysicalMinimum": return <Leaf label="Physical Minimum" value={`${node.value}`} />;
@@ -203,9 +220,9 @@ function HidNodeView({ node }: { node: HidNode }) {
     case "ReportId":        return <Leaf label="Report ID" value={`${node.id}`} />;
     case "UsageMinimum":    return <Leaf label="Usage Minimum" value={`${node.value}`} />;
     case "UsageMaximum":    return <Leaf label="Usage Maximum" value={`${node.value}`} />;
-    case "Input":           return <Leaf label="Input" value={hidFlagsLabel(node.flags)} />;
-    case "Output":          return <Leaf label="Output" value={hidFlagsLabel(node.flags)} />;
-    case "Feature":         return <Leaf label="Feature" value={hidFlagsLabel(node.flags)} />;
+    case "Input":           return <Leaf label="Input" value={hidFlagsLabel(node.flags, "input")} />;
+    case "Output":          return <Leaf label="Output" value={hidFlagsLabel(node.flags, "output")} />;
+    case "Feature":         return <Leaf label="Feature" value={hidFlagsLabel(node.flags, "feature")} />;
     default:                return null;
   }
 }

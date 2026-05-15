@@ -142,10 +142,13 @@ fn item_to_node(item: &Item, usage_page: &mut u16) -> Option<HidNode> {
         // Global
         (IType::Global, 0) => {
             *usage_page = item.value as u16;
-            Some(HidNode::UsagePage {
-                page_id: *usage_page,
-                name: page_name(*usage_page).to_string(),
-            })
+            let known = page_name(*usage_page);
+            let name = if known.is_empty() {
+                "Vendor defined".to_string()
+            } else {
+                known.to_string()
+            };
+            Some(HidNode::UsagePage { page_id: *usage_page, name })
         }
         (IType::Global, 1) => Some(HidNode::LogicalMinimum { value: item.value as i32 }),
         (IType::Global, 2) => Some(HidNode::LogicalMaximum { value: item.value as i32 }),
