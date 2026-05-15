@@ -383,7 +383,7 @@ function DeviceNode({ device }: { device: UsbDevice_Serialize }) {
     : dd.b_device_class === 0 ? "Composite device"
     : `${deviceClassLabel(dd.b_device_class)} device`;
 
-  const label = `${speedLabel(device.speed)} device @ ${lastPort(device)} (0x${device.location_id})`;
+  const label = `${hex4(dd.id_vendor)}:${hex4(dd.id_product)} ${speedLabel(device.speed)} device @ ${lastPort(device)} (0x${device.location_id})`;
   const value = `${typeLabel}: "${product}"`;
 
   return (
