@@ -2,5 +2,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    usb_prober_lib::run()
+    usb_probester_lib::run()
 }

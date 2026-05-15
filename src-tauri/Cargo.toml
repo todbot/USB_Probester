@@ -1,12 +1,12 @@
 [package]
-name = "usb-prober"
+name = "usb-probester"
 version = "0.1.0"
 description = "A Tauri App"
 authors = ["you"]
 edition = "2021"
 
 [lib]
-name = "usb_prober_lib"
+name = "usb_probester_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]

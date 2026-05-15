@@ -4184,7 +4184,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "usb-prober"
+name = "usb-probester"
 version = "0.1.0"
 dependencies = [
  "serde",
