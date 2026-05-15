@@ -51,12 +51,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - platform: macos-latest   # arm64 (Apple Silicon)
-            rust-target: aarch64-apple-darwin
-            tauri-args: --target aarch64-apple-darwin
-          # - platform: macos-latest   # x86_64 cross-compiled on Apple Silicon
-          #   rust-target: x86_64-apple-darwin
-          #   tauri-args: --target x86_64-apple-darwin
+          - platform: macos-latest   # universal binary (arm64 + x86_64)
+            rust-target: aarch64-apple-darwin,x86_64-apple-darwin
+            tauri-args: --target universal-apple-darwin
           # - platform: windows-latest
           #   rust-target: ''
           #   tauri-args: ''
@@ -240,9 +237,17 @@ jobs:
           releaseId: ${{ steps.latest-release.outputs.id }}
 
       - name: Build CLI
-        run: >
-          cargo build --release -p usb-cli
-          ${{ matrix.rust-target && format('--target {0}', matrix.rust-target) || '' }}
+        shell: bash
+        run: |
+          if [ "${{ matrix.platform }}" = "macos-latest" ]; then
+            cargo build --release -p usb-cli --target aarch64-apple-darwin
+            cargo build --release -p usb-cli --target x86_64-apple-darwin
+            lipo -create -output target/release/usb-probester-cli \
+              target/aarch64-apple-darwin/release/usb-probester-cli \
+              target/x86_64-apple-darwin/release/usb-probester-cli
+          else
+            cargo build --release -p usb-cli
+          fi
 
       # ── macOS: delete temporary keychain ────────────────────────────────────
       - name: Delete macOS build keychain
@@ -260,11 +265,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          if [ -n "${{ matrix.rust-target }}" ]; then
-            cli_bin="target/${{ matrix.rust-target }}/release/usb-probester-cli"
-          else
-            cli_bin="target/release/usb-probester-cli"
-          fi
+          cli_bin="target/release/usb-probester-cli"
           if [ -f "$cli_bin" ]; then
             tag=$(gh api "repos/$GITHUB_REPOSITORY/releases/${{ steps.latest-release.outputs.id }}" --jq '.tag_name')
             os=${{ matrix.platform == 'macos-latest' && 'macos-aarch64' || 'linux-x86_64' }}
