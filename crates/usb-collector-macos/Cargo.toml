@@ -1,0 +1,10 @@
+[package]
+name = "usb-collector-macos"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+plist = "1"
+usb-types = { path = "../usb-types" }
+serde = { workspace = true }
+nusb = "0.2.3"
