@@ -5,6 +5,8 @@ import { invoke as __TAURI_INVOKE } from "@tauri-apps/api/core";
 /** Commands */
 export const commands = {
 	enumerateUsb: () => typedError<UsbDevice_Serialize[], string>(__TAURI_INVOKE("enumerate_usb")),
+	formatAsText: (devices: UsbDevice_Deserialize[]) => __TAURI_INVOKE<string>("format_as_text", { devices }),
+	writeTextFile: (path: string, content: string) => typedError<null, string>(__TAURI_INVOKE("write_text_file", { path, content })),
 };
 
 /* Types */

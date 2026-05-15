@@ -1,4 +1,4 @@
-# USBProbester
+# USB Probester
 
 A cross-platform desktop app for exploring connected USB devices — their
 device descriptors, configuration descriptors, interface and endpoint
@@ -6,6 +6,8 @@ details, and parsed HID report descriptors. Spiritual successor to Apple's
 `USB Prober.app`.
 
 Built with [Tauri v2](https://tauri.app) (Rust backend, React/TypeScript frontend).
+
+Also ships a standalone CLI (`usb-probester-cli`) for text or JSON output.
 
 ---
 
@@ -18,7 +20,7 @@ configuration descriptors and a parsed rendering of HID report descriptors.
 
 Apple quietly dropped it. The last version stopped working on modern macOS
 (Apple Silicon / macOS 12+), the download was removed from the developer portal,
-and no replacement was provided. 
+and no replacement was provided.
 
 USBProbester aims to fill that gap with a native, cross-platform tool that
 shows the same level of detail USB Prober did — and eventually more.
@@ -31,11 +33,11 @@ output format and correctness.
 
 ## Status
 
-| Platform | Collector   | HID Parser | Frontend UI |
-|----------|-------------|------------|-------------|
-| macOS    | ✓ working   | ✓ working  | in progress |
-| Linux    | ✓ working   | ✓ shared   | in progress |
-| Windows  | planned     | ✓ shared   | in progress |
+| Platform | Collector   | HID Parser | GUI        | CLI        |
+|----------|-------------|------------|------------|------------|
+| macOS    | ✓ working   | ✓ working  | ✓ working  | ✓ working  |
+| Linux    | ✓ working   | ✓ shared   | ✓ working  | ✓ working  |
+| Windows  | planned     | ✓ shared   | planned    | planned    |
 
 ---
 
@@ -47,8 +49,9 @@ crates/
   usb-collector-macos/  — macOS USB enumeration via nusb + ioreg HID pass
   usb-collector-linux/  — Linux USB enumeration via nusb + sysfs parsing
   hid-parser/           — platform-agnostic HID report descriptor parser
-src-tauri/              — Tauri shell and backend commands
-src/                    — React/TypeScript frontend (in progress)
+  usb-cli/              — standalone CLI binary (usb-probester-cli)
+src-tauri/              — Tauri shell, backend commands, text formatter
+src/                    — React/TypeScript frontend
 tests/fixtures/         — reference output from original USB Prober.app
 ```
 
@@ -80,6 +83,36 @@ npm run tauribuild
 
 ---
 
+## CLI
+
+A standalone `usb-probester-cli` binary is included that doesn't require
+the GUI or a web runtime:
+
+```bash
+# Mac USB Prober-style text tree (default)
+cargo run -p usb-cli
+
+# Pretty-printed JSON
+cargo run -p usb-cli -- --format json
+
+# Build a standalone release binary
+cargo build --release -p usb-cli
+# → target/release/usb-probester-cli
+```
+
+---
+
+## GUI features
+
+- **Tree view** — full collapsible descriptor tree matching Mac USB Prober's layout
+- **Split view** — device list on the left, tabbed descriptor panels on the right
+- **Save Output** — native save dialog; writes Mac USB Prober-style `.txt`
+- **Save JSON** — native save dialog; writes pretty-printed `.json`
+- **Refresh** — re-enumerates all connected devices on demand
+- Light and dark mode
+
+---
+
 ## Running the collectors (no UI needed)
 
 These examples validate the collector and HID parser against real hardware
@@ -96,10 +129,6 @@ cargo run -p usb-collector-linux --example dump_one
 #   path argument → any /sys/bus/usb/devices/<dev>/descriptors file
 cargo run -p usb-collector-linux --example from_sysfs_file
 cargo run -p usb-collector-linux --example from_sysfs_file -- /sys/bus/usb/devices/2-4/descriptors
-
-# Save a snapshot for offline testing:
-cp /sys/bus/usb/devices/2-2.3/descriptors blink1.bin
-cargo run -p usb-collector-linux --example from_sysfs_file -- blink1.bin
 ```
 
 ### macOS
@@ -179,17 +208,17 @@ USB enumeration uses two passes:
 - [Tauri v2](https://tauri.app) — Rust + web frontend desktop app framework
 - [specta](https://github.com/oscartbeaumont/specta) + [tauri-specta](https://github.com/oscartbeaumont/tauri-specta) — automatic TypeScript type generation from Rust types
 - [plist](https://crates.io/crates/plist) — plist parsing for ioreg XML output
+- [clap](https://crates.io/crates/clap) — CLI argument parsing for `usb-probester-cli`
 
 ### Reference implementations
 
 - [Apple Hardware IO Tools (archived)](https://developer.apple.com/download/all/?q=hardware%20io%20tools) — the original USB Prober
 - [Microsoft USBView](https://github.com/microsoft/Windows-driver-samples/tree/main/usb/usbview) — reference for Windows IOCTL-based USB enumeration
-- [Linux `/sys/bus/usb`](https://www.kernel.org/doc/html/latest/driver-api/usb/usb.html) — sysfs USB device tree used by the planned Linux collector
-
+- [Linux `/sys/bus/usb`](https://www.kernel.org/doc/html/latest/driver-api/usb/usb.html) — sysfs USB device tree
 
 ### Related tools
 
-- [lsusb for Linux](https://linux.wiki/docs/commands/system-info/lsusb/) - Linux, no HID report descriptor usually
-- [lsusb for Mac OS X](https://github.com/jlhonora/lsusb) - MacOS only and only partial data
-- [USBDeview](https://www.nirsoft.net/utils/usb_devices_view.html) - Windows-only
-- [USB Device Tree Viewer](https://www.uwe-sieber.de/usbtreeview_e.html) - Windows-only
+- [lsusb for Linux](https://linux.wiki/docs/commands/system-info/lsusb/) — Linux, no HID report descriptor usually
+- [lsusb for Mac OS X](https://github.com/jlhonora/lsusb) — macOS only and only partial data
+- [USBDeview](https://www.nirsoft.net/utils/usb_devices_view.html) — Windows-only
+- [USB Device Tree Viewer](https://www.uwe-sieber.de/usbtreeview_e.html) — Windows-only

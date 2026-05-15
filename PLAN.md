@@ -175,20 +175,38 @@ Key implementation details:
 
 ---
 
-## Frontend (Tauri side)
+## Frontend (Tauri side) ✓ DONE
 
-Invoke once on load, then on a "Refresh" button or on a USB hotplug
-signal (see below). Render with a tree component — `react-arborist` if
-React, or build a custom one with a `<details>`/`<summary>` cascade since
-the data is hierarchical and virtualization isn't needed unless someone
-has 200 USB devices. Right-hand panel switches on selection between
-Device Descriptor / Configuration Descriptor(s) / HID Report Descriptor
-tabs.
+Two view modes toggled in the header:
 
-For the HID Report Descriptor view, render the same tree the parser
-produces — collapsible Collections, monospace, with the option to also
-show the raw hex dump above the parsed tree (USB Prober shows both —
-fixture lines 187–197 are the hex, 198–276 the parsed tree).
+**Tree view** — single-pane collapsible tree matching Mac USB Prober's layout.
+Each device is a top-level `TreeNode`; children are Device Descriptor,
+Configuration Descriptor (with interfaces/endpoints/HID inline), and
+Number of Endpoints. Uses React context (`DepthCtx`) to track nesting depth
+and compute label-area pixel width so the value column lands at a constant
+absolute x-position at every nesting level.
+
+**Split view** — left panel lists devices; right panel shows Device Descriptor /
+Configuration / HID tabs for the selected device. Tab is preserved when
+switching devices (unless the new device has no HID and "HID" was active).
+
+UI features:
+- **Refresh** button re-enumerates live devices
+- **Save Output** button — calls `format_as_text` Tauri command (Mac USB Prober-style
+  text, same formatter as the CLI), shows native macOS save dialog, writes `.txt`
+- **Save JSON** button — serialises the already-loaded device list via
+  `JSON.stringify`, shows native save dialog, writes `.json`
+- Dark mode via CSS custom properties; all colors defined in `:root`, overridden
+  once in `@media (prefers-color-scheme: dark)`
+- Window: 1000 × 600 px; font: SF Mono 13px weight 500
+
+**Tauri commands:**
+- `enumerate_usb() -> Result<Vec<UsbDevice>, String>` — platform-dispatched
+- `format_as_text(devices: Vec<UsbDevice>) -> String` — Mac USB Prober text format
+- `write_text_file(path: String, content: String) -> Result<(), String>` — file write
+
+Text formatter lives in `src-tauri/src/formatter.rs`; same logic duplicated in
+`crates/usb-cli/src/main.rs` for the standalone CLI.
 
 **Hotplug:** for live updates without polling, the platforms diverge.
 - macOS: `IOServiceAddMatchingNotification` (use the `io-kit-sys` crate).
@@ -201,6 +219,21 @@ seconds is fine.
 
 ---
 
+## CLI binary ✓ DONE
+
+`crates/usb-cli` — standalone `usb-probester-cli` binary.
+
+```bash
+usb-probester-cli                  # Mac USB Prober-style text tree (default)
+usb-probester-cli --format json    # pretty-printed JSON
+cargo build --release -p usb-cli   # → target/release/usb-probester-cli
+```
+
+Depends on the same collector and parser crates as the Tauri app.
+Platform dispatch mirrors `src-tauri/src/lib.rs`.
+
+---
+
 ## Build order
 
 1. ~~Define the `usb-types` crate.~~ ✓ done
@@ -208,8 +241,8 @@ seconds is fine.
 3. ~~`hid-parser` crate.~~ ✓ done
 4. ~~Tauri wiring + basic frontend.~~ ✓ done
 5. ~~Linux collector via `/sys`.~~ ✓ done
-6. Frontend tree + descriptor panels. ← **current focus**
-7. Hotplug.
+6. ~~Frontend tree + descriptor panels.~~ ✓ done
+7. Hotplug. ← **next**
 8. Windows via ioctls — the slog.
 
 The design holds up because the report descriptor bytes are the same

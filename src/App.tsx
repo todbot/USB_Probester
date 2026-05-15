@@ -1,5 +1,6 @@
 import { useEffect, useState, createContext, useContext } from "react";
 import type { ReactNode } from "react";
+import { save } from "@tauri-apps/plugin-dialog";
 
 const DepthCtx = createContext(0);
 import { commands } from "./bindings";
@@ -495,6 +496,25 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [view, setView] = useState<View>("tree");
 
+  async function saveOutput() {
+    const path = await save({
+      defaultPath: "usb-devices.txt",
+      filters: [{ name: "Text", extensions: ["txt"] }],
+    });
+    if (!path) return;
+    const text = await commands.formatAsText(devices);
+    await commands.writeTextFile(path, text);
+  }
+
+  async function saveJson() {
+    const path = await save({
+      defaultPath: "usb-devices.json",
+      filters: [{ name: "JSON", extensions: ["json"] }],
+    });
+    if (!path) return;
+    await commands.writeTextFile(path, JSON.stringify(devices, null, 2));
+  }
+
   async function refresh() {
     setLoading(true);
     setError(null);
@@ -521,6 +541,8 @@ export default function App() {
         <button onClick={refresh} disabled={loading}>
           {loading ? "Refreshing…" : "Refresh"}
         </button>
+        <button onClick={saveOutput} disabled={devices.length === 0}>Save Output</button>
+        <button onClick={saveJson} disabled={devices.length === 0}>Save JSON</button>
         <div className="view-toggle">
           <button className={view === "tree" ? "active" : ""} onClick={() => setView("tree")}>Tree</button>
           <button className={view === "split" ? "active" : ""} onClick={() => setView("split")}>Split</button>

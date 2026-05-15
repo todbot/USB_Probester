@@ -8,14 +8,14 @@ See `PLAN.md` for the full architecture.
 
 ## Conventions
 
-- Rust backend, [TODO: pick frontend framework — React / Svelte / Vue]
+- Rust backend, React/TypeScript frontend (Tauri v2)
 - Workspace layout:
-  - `crates/usb-types` — shared data model
+  - `crates/usb-types` — shared data model (serde + specta types)
   - `crates/usb-collector-macos` — nusb + ioreg HID pass collector (cfg-gated)
   - `crates/usb-collector-linux` — `/sys`-based collector (cfg-gated)
-  - `crates/usb-collector-windows` — ioctl-based collector (cfg-gated)
   - `crates/hid-parser` — platform-agnostic HID report descriptor parser
-  - `src-tauri` — Tauri shell
+  - `crates/usb-cli` — standalone CLI binary (`usb-probester-cli`)
+  - `src-tauri` — Tauri shell, backend commands, text formatter
 - Platform code behind `cfg` gates; frontend never sees platform-specific shapes.
 - Prefer parsing raw descriptor bytes over scraping pretty-printed tool output.
 - Capture real OS output as test fixtures in `tests/fixtures/` so unit tests
@@ -28,8 +28,8 @@ See `PLAN.md` for the full architecture.
 3. ~~`hid-parser` crate~~ ✓ done
 4. ~~Tauri wiring + basic frontend~~ ✓ done
 5. ~~Linux collector (`/sys`)~~ ✓ done
-6. Frontend tree + descriptor panels  ← **current focus**
-7. Hotplug
+6. ~~Frontend tree + descriptor panels~~ ✓ done
+7. Hotplug  ← **next**
 8. Windows ioctls
 
 ## Platform gating
@@ -47,9 +47,26 @@ Reads everything from sysfs — no device open, no elevated privileges:
 - HID report descriptors from `<dev>/<dev>:<cfg>.<iface>/0003:<VID>:<PID>.<N>/report_descriptor`
 - `location_id` is the sysfs basename (e.g. `"2-4"`, `"2-2.3"`)
 
+## Text formatter
+
+`src-tauri/src/formatter.rs` contains the Mac USB Prober-style text renderer,
+shared by both the Tauri "Save Output" command and the CLI binary.
+The same logic also lives in `crates/usb-cli/src/main.rs` (standalone copy
+for the CLI; these should be kept in sync if the format changes).
+
 ## Useful commands
 
 ```bash
+# CLI — USB Prober-style text dump
+cargo run -p usb-cli
+
+# CLI — JSON dump
+cargo run -p usb-cli -- --format json
+
+# CLI — standalone release binary
+cargo build --release -p usb-cli
+# binary at target/release/usb-probester-cli
+
 # Linux — live USB enumeration
 cargo run -p usb-collector-linux --example dump_one
 
@@ -71,10 +88,13 @@ cargo build
 # Run Tauri dev server
 npm run tauridev
 
+# Build release app bundle
+npm run tauribuild
+
 # Clean all build artifacts
 npm run clean
 ```
 
 ## Current focus
 
-Step 6: Frontend tree + descriptor panels. Steps 1–5 are all done.
+Step 7: Hotplug. Steps 1–6 are all done.
