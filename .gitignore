@@ -27,6 +27,8 @@ dist-ssr
 src-tauri/target/
 target
 
-CLAUDE.md
-PLAN.md
+# Tauri unneeded
+src-tauri/icons/ios
+src-tauri/icons/android
+
 .claude
