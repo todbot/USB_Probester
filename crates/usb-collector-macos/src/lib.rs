@@ -240,11 +240,13 @@ fn walk_hid(value: &Value, map: &mut HashMap<u32, Vec<HidInterface>>) {
                     .map(|n| n as u32)
                 {
                     if let Some(Value::Data(bytes)) = dict.get("ReportDescriptor") {
+                        let parsed = hid_parser::parse(bytes).ok();
                         map.entry(location_id)
                             .or_default()
                             .push(HidInterface {
-                                interface_number: 0, // resolved later from config descriptor
+                                interface_number: 0,
                                 raw_report_descriptor: bytes.clone(),
+                                parsed,
                             });
                     }
                 }

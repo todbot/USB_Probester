@@ -6,5 +6,6 @@ edition = "2021"
 [dependencies]
 plist = "1"
 usb-types = { path = "../usb-types" }
+hid-parser = { path = "../hid-parser" }
 serde = { workspace = true }
 nusb = "0.2.3"

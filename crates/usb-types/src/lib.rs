@@ -68,11 +68,59 @@ pub struct StringDescriptor {
     pub value: String,
 }
 
-/// Raw HID interface — `parsed` field added when hid-parser crate lands (Step 3).
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct HidInterface {
     pub interface_number: u8,
     pub raw_report_descriptor: Vec<u8>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parsed: Option<Vec<HidNode>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+#[serde(tag = "type")]
+pub enum HidNode {
+    UsagePage { page_id: u16, name: String },
+    Usage { usage_id: u32, name: Option<String> },
+    Collection { kind: CollectionKind, children: Vec<HidNode> },
+    ReportId { id: u32 },
+    LogicalMinimum { value: i32 },
+    LogicalMaximum { value: i32 },
+    PhysicalMinimum { value: i32 },
+    PhysicalMaximum { value: i32 },
+    UnitExponent { value: i32 },
+    Unit { value: u32 },
+    ReportSize { value: u32 },
+    ReportCount { value: u32 },
+    UsageMinimum { value: u32 },
+    UsageMaximum { value: u32 },
+    Input { flags: HidIoFlags },
+    Output { flags: HidIoFlags },
+    Feature { flags: HidIoFlags },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+pub enum CollectionKind {
+    Physical,
+    Application,
+    Logical,
+    Report,
+    NamedArray,
+    UsageSwitch,
+    UsageModifier,
+    Vendor { id: u8 },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+pub struct HidIoFlags {
+    pub constant: bool,        // bit 0: false=Data, true=Constant
+    pub variable: bool,        // bit 1: false=Array, true=Variable
+    pub relative: bool,        // bit 2: false=Absolute, true=Relative
+    pub wrap: bool,            // bit 3: false=No Wrap, true=Wrap
+    pub non_linear: bool,      // bit 4: false=Linear, true=Non Linear
+    pub no_preferred: bool,    // bit 5: false=Preferred State, true=No Preferred
+    pub null_state: bool,      // bit 6: false=No Null Position, true=Null State
+    pub volatile: bool,        // bit 7: false=Nonvolatile, true=Volatile (Output/Feature)
+    pub buffered_bytes: bool,  // bit 8: false=Bitfield, true=Buffered Bytes
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]

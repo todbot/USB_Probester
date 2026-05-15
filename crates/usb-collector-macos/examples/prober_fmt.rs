@@ -1,6 +1,7 @@
 /// Format USB device output to match Apple's USB Prober.app style.
 use usb_collector_macos::MacCollector;
 use usb_types::*;
+use hid_parser::render_text;
 
 fn main() {
     let devices = MacCollector::new()
@@ -105,6 +106,23 @@ fn print_config_descriptor(d: &UsbDevice, cfg: &ConfigDescriptor) {
 
     for iface in &cfg.interfaces {
         print_interface(d, iface);
+    }
+
+    // HID report descriptors follow the configuration descriptor section.
+    for hid in &d.hid_interfaces {
+        print_hid_descriptor(hid);
+    }
+}
+
+// ── HID Descriptor ────────────────────────────────────────────────────────────
+
+fn print_hid_descriptor(hid: &HidInterface) {
+    if hid.raw_report_descriptor.is_empty() {
+        return;
+    }
+    println!("                    Parsed Report Descriptor:   ");
+    if let Some(nodes) = &hid.parsed {
+        print!("{}", render_text(nodes, 26));
     }
 }
 

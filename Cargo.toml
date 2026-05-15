@@ -3,6 +3,7 @@ members = [
     "src-tauri",
     "crates/usb-types",
     "crates/usb-collector-macos",
+    "crates/hid-parser",
 ]
 resolver = "2"
 

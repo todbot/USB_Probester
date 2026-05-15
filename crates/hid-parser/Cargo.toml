@@ -1,0 +1,7 @@
+[package]
+name = "hid-parser"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+usb-types = { path = "../usb-types" }
