@@ -1,0 +1,264 @@
+name: Build
+
+# Triggered manually from the GitHub Actions UI.
+# Required secrets — set these in Settings → Secrets and variables → Actions:
+#
+#   macOS signing (sign_macos):
+#     APPLE_CERTIFICATE           base64-encoded Developer ID Application .p12
+#     APPLE_CERTIFICATE_PASSWORD  password for the .p12
+#     APPLE_SIGNING_IDENTITY      e.g. "Developer ID Application: Your Name (TEAMID)"
+#
+#   macOS notarization (notarize_macos, also requires sign_macos):
+#     APPLE_ID                    Apple ID email used to request notarization
+#     APPLE_PASSWORD              app-specific password for that Apple ID
+#     APPLE_TEAM_ID               10-character Apple team ID
+#
+#   Windows signing via Azure Trusted Signing (sign_windows):
+#     AZURE_TENANT_ID                      Azure AD tenant ID
+#     AZURE_CLIENT_ID                      Service principal app ID
+#                                          (needs "Trusted Signing Certificate Profile Signer" role)
+#     AZURE_CLIENT_SECRET                  Service principal secret
+#     AZURE_TRUSTED_SIGNING_ENDPOINT       e.g. https://eus.codesigning.azure.net
+#     AZURE_TRUSTED_SIGNING_ACCOUNT        Trusted Signing account name
+#     AZURE_TRUSTED_SIGNING_CERT_PROFILE   Certificate profile name
+
+on:
+  workflow_dispatch:
+    inputs:
+      sign_macos:
+        description: 'Sign macOS app'
+        type: boolean
+        default: false
+      notarize_macos:
+        description: 'Notarize macOS app (requires Sign macOS)'
+        type: boolean
+        default: false
+      sign_windows:
+        description: 'Sign Windows installer'
+        type: boolean
+        default: false
+      upload_to_release:
+        description: 'Upload installers to the latest GitHub release'
+        type: boolean
+        default: false
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-latest   # arm64 (Apple Silicon)
+            rust-target: aarch64-apple-darwin
+            tauri-args: --target aarch64-apple-darwin
+          # - platform: macos-latest   # x86_64 cross-compiled on Apple Silicon
+          #   rust-target: x86_64-apple-darwin
+          #   tauri-args: --target x86_64-apple-darwin
+          # - platform: windows-latest
+          #   rust-target: ''
+          #   tauri-args: ''
+          # - platform: ubuntu-22.04
+          #   rust-target: ''
+          #   tauri-args: ''
+
+    runs-on: ${{ matrix.platform }}
+
+    permissions:
+      contents: write   # required to upload assets to a release
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust-target }}
+
+      - name: Cache Rust build artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install Linux system dependencies
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            pkg-config \
+            libudev-dev \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf
+
+      - name: Cache node_modules
+        id: cache-node-modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: node-modules-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      - name: Install frontend dependencies
+        if: steps.cache-node-modules.outputs.cache-hit != 'true'
+        run: npm ci
+
+      # ── macOS: import Developer ID certificate into a temporary keychain ────
+      - name: Import macOS signing certificate
+        if: >
+          (matrix.platform == 'macos-latest')
+          && inputs.sign_macos
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        run: |
+          KEYCHAIN_PATH="$RUNNER_TEMP/build.keychain"
+          KEYCHAIN_PASSWORD="$(openssl rand -base64 20)"
+          echo "KEYCHAIN_PATH=$KEYCHAIN_PATH" >> "$GITHUB_ENV"
+          echo "KEYCHAIN_PASSWORD=$KEYCHAIN_PASSWORD" >> "$GITHUB_ENV"
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+          echo "$APPLE_CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security import "$RUNNER_TEMP/cert.p12" \
+            -k "$KEYCHAIN_PATH" \
+            -P "$APPLE_CERTIFICATE_PASSWORD" \
+            -T /usr/bin/codesign
+          rm "$RUNNER_TEMP/cert.p12"
+
+          security list-keychain -d user -s "$KEYCHAIN_PATH"
+          security set-key-partition-list \
+            -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+      # Expose signing identity to the build step via GITHUB_ENV so that the
+      # env block on the build step stays unconditional (simpler expression).
+      - name: Set macOS signing env
+        if: >
+          (matrix.platform == 'macos-latest')
+          && inputs.sign_macos
+        run: echo "APPLE_SIGNING_IDENTITY=${{ secrets.APPLE_SIGNING_IDENTITY }}" >> "$GITHUB_ENV"
+
+      - name: Set macOS notarization env
+        if: >
+          (matrix.platform == 'macos-latest')
+          && inputs.notarize_macos
+        run: |
+          echo "APPLE_ID=${{ secrets.APPLE_ID }}" >> "$GITHUB_ENV"
+          echo "APPLE_PASSWORD=${{ secrets.APPLE_PASSWORD }}" >> "$GITHUB_ENV"
+          echo "APPLE_TEAM_ID=${{ secrets.APPLE_TEAM_ID }}" >> "$GITHUB_ENV"
+
+      # ── Windows: configure Azure Trusted Signing ────────────────────────────
+      # Installs the Microsoft.Trusted.Signing.Client NuGet package which ships
+      # Azure.CodeSigning.Dlib.dll — the plugin signtool.exe uses to authenticate
+      # to the Trusted Signing service.  We then point Tauri at a custom sign
+      # command so it calls signtool + dlib for every binary it packages.
+      - name: Cache Trusted Signing NuGet package
+        if: matrix.platform == 'windows-latest' && inputs.sign_windows
+        id: cache-tsc
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/tsc-pkg
+          key: tsc-nuget-1.0.60
+
+      - name: Configure Azure Trusted Signing
+        if: matrix.platform == 'windows-latest' && inputs.sign_windows
+        shell: pwsh
+        run: |
+          # Download and unpack the Trusted Signing client NuGet package (skipped on cache hit)
+          $pkgDir = "$env:RUNNER_TEMP\tsc-pkg"
+          if ("${{ steps.cache-tsc.outputs.cache-hit }}" -ne "true") {
+            nuget install Microsoft.Trusted.Signing.Client `
+              -Version 1.0.60 -OutputDirectory $pkgDir -NonInteractive
+          }
+
+          # Locate the x64 DLIB
+          $dlibPath = (Get-ChildItem $pkgDir -Recurse -Filter "Azure.CodeSigning.Dlib.dll" |
+            Where-Object { $_.FullName -match "x64" } |
+            Select-Object -First 1).FullName
+          if (-not $dlibPath) { throw "Azure.CodeSigning.Dlib.dll not found" }
+
+          # Write the service metadata JSON (no secrets — only endpoint + names)
+          $meta = [ordered]@{
+            Endpoint               = "${{ secrets.AZURE_TRUSTED_SIGNING_ENDPOINT }}"
+            CodeSigningAccountName = "${{ secrets.AZURE_TRUSTED_SIGNING_ACCOUNT }}"
+            CertificateProfileName = "${{ secrets.AZURE_TRUSTED_SIGNING_CERT_PROFILE }}"
+          } | ConvertTo-Json
+          $metaPath = "$env:RUNNER_TEMP\ats-metadata.json"
+          $meta | Set-Content $metaPath
+
+          # Find the newest x64 signtool.exe from the Windows SDK
+          $signtool = (Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin" `
+            -Recurse -Filter "signtool.exe" |
+            Where-Object { $_.FullName -match "x64" } |
+            Sort-Object LastWriteTime -Descending |
+            Select-Object -First 1).FullName
+          if (-not $signtool) { throw "signtool.exe not found" }
+
+          # Build the Tauri custom sign command.
+          # Tauri appends the file path as the final argument, which is what
+          # signtool expects after all its flags.
+          $cmd = "`"$signtool`" sign /fd SHA256" +
+                 " /tr http://timestamp.acs.microsoft.com /td SHA256" +
+                 " /dlib `"$dlibPath`"" +
+                 " /dmdf `"$metaPath`""
+          echo "TAURI_SIGNING_WINDOWS_SIGN_COMMAND=$cmd" >> $env:GITHUB_ENV
+
+          # Azure credential env vars for the build step
+          echo "AZURE_TENANT_ID=${{ secrets.AZURE_TENANT_ID }}"    >> $env:GITHUB_ENV
+          echo "AZURE_CLIENT_ID=${{ secrets.AZURE_CLIENT_ID }}"    >> $env:GITHUB_ENV
+          echo "AZURE_CLIENT_SECRET=${{ secrets.AZURE_CLIENT_SECRET }}" >> $env:GITHUB_ENV
+
+      # ── Build ────────────────────────────────────────────────────────────────
+      - name: Get latest release ID
+        if: inputs.upload_to_release
+        id: latest-release
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          id=$(gh api "repos/$GITHUB_REPOSITORY/releases" --jq '.[0].id')
+          echo "id=$id" >> "$GITHUB_OUTPUT"
+
+      - name: Build Tauri app
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Signing/notarization vars are populated by the steps above when
+          # the corresponding checkbox is ticked; empty otherwise → no signing.
+        with:
+          args: ${{ matrix.tauri-args }}
+          releaseId: ${{ steps.latest-release.outputs.id }}
+
+      # ── macOS: delete temporary keychain ────────────────────────────────────
+      - name: Delete macOS build keychain
+        if: >
+          always()
+          && (matrix.platform == 'macos-latest')
+          && inputs.sign_macos
+          && env.KEYCHAIN_PATH != ''
+        run: security delete-keychain "$KEYCHAIN_PATH" || true
+
+      # ── Upload build artifacts ───────────────────────────────────────────────
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.platform }}-${{ matrix.rust-target || 'default' }}
+          path: |
+            src-tauri/target/**/release/bundle/**/*.dmg
+            src-tauri/target/**/release/bundle/**/*.app.tar.gz
+            src-tauri/target/**/release/bundle/**/*.msi
+            src-tauri/target/**/release/bundle/**/*.exe
+            src-tauri/target/**/release/bundle/**/*.deb
+            src-tauri/target/**/release/bundle/**/*.rpm
+            src-tauri/target/**/release/bundle/**/*.AppImage
+          if-no-files-found: warn

@@ -76,6 +76,19 @@ function interfaceClassLabel(cls: number, sub: number): string {
   return deviceClassLabel(cls);
 }
 
+function interfaceSubclassLabel(cls: number, sub: number): string {
+  const map: Record<number, Record<number, string>> = {
+    1:  { 1: "Control", 2: "Streaming", 3: "MIDI Streaming" },
+    2:  { 1: "Direct Line", 2: "Abstract (Modem)", 3: "Telephone",
+          4: "Multi-Channel", 5: "CAPI", 6: "Ethernet Networking", 7: "ATM Networking" },
+    3:  { 0: "No Subclass", 1: "Boot Interface" },
+    8:  { 1: "Reduced Block Commands", 2: "SFF-8020i", 3: "QIC-157",
+          4: "UFI", 5: "SFF-8070i", 6: "SCSI Transparent" },
+    14: { 1: "Video Control", 2: "Video Streaming", 3: "Video Interface Collection" },
+  };
+  return map[cls]?.[sub] ?? "";
+}
+
 function endpointType(attr: number): string {
   const t = ["Control", "Isochronous", "Bulk", "Interrupt"];
   return t[attr & 0x03] ?? "Unknown";
@@ -257,7 +270,7 @@ function EndpointNode({ ep }: { ep: EndpointDescriptor }) {
 function HidDescriptorNode({ hid }: { hid: HidInterface_Serialize }) {
   const bytes = hid.raw_report_descriptor;
   return (
-    <TreeNode label="HID Descriptor" defaultOpen>
+    <TreeNode label="HID Report Descriptor" defaultOpen>
       <TreeNode label={`Length (and contents):   ${bytes.length}`}>
         <HexBlock bytes={bytes} />
       </TreeNode>
@@ -290,7 +303,11 @@ function InterfaceNode({
       <Leaf label="Alternate Setting" value={`${iface.b_alternate_setting}`} />
       <Leaf label="Number of Endpoints" value={`${iface.endpoints.length}`} />
       <Leaf label="Interface Class:" value={`${iface.b_interface_class}   (${deviceClassLabel(iface.b_interface_class)})`} />
-      <Leaf label="Interface Subclass;" value={`${iface.b_interface_sub_class}`} />
+      <Leaf label="Interface Subclass;" value={(() => {
+        const sub = iface.b_interface_sub_class;
+        const name = interfaceSubclassLabel(iface.b_interface_class, sub);
+        return name ? `${sub}   (${name})` : `${sub}`;
+      })()} />
       <Leaf label="Interface Protocol:" value={`${iface.b_interface_protocol}`} />
       {hid && <HidDescriptorNode hid={hid} />}
       {iface.endpoints.map((ep, i) => (
@@ -371,6 +388,17 @@ function DeviceNode({ device }: { device: UsbDevice_Serialize }) {
 
   return (
     <TreeNode label={label} value={value}>
+      <TreeNode label="Number Of Endpoints (includes EP0):">
+        {device.configurations.map((cfg, i) => {
+          const total = cfg.interfaces.reduce((sum, iface) => sum + iface.endpoints.length, 0) + 1;
+          return (
+            <Leaf key={i}
+              label={`Total Endpoints for Configuration ${cfg.b_configuration_value} (current):`}
+              value={`${total}`}
+            />
+          );
+        })}
+      </TreeNode>
       <DeviceDescriptorNode device={device} />
       {device.configurations.map((cfg, i) => (
         <ConfigNode key={i} cfg={cfg} device={device} />
@@ -411,7 +439,8 @@ function SplitView({ devices }: { devices: UsbDevice_Serialize[] }) {
 
   function selectDevice(d: UsbDevice_Serialize) {
     setSelected(d);
-    setTab("device");
+    // If current tab is "hid" but the new device has no HID interfaces, fall back
+    if (tab === "hid" && d.hid_interfaces.length === 0) setTab("device");
   }
 
   return (
@@ -488,7 +517,7 @@ export default function App() {
   return (
     <div className="app">
       <header>
-        <h1>USBProbester</h1>
+        <h1>USB Probester</h1>
         <button onClick={refresh} disabled={loading}>
           {loading ? "Refreshing…" : "Refresh"}
         </button>
