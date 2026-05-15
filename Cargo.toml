@@ -5,6 +5,7 @@ members = [
     "crates/usb-collector-macos",
     "crates/usb-collector-linux",
     "crates/hid-parser",
+    "crates/usb-cli",
 ]
 resolver = "2"
 

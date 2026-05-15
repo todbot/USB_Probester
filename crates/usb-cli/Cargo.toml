@@ -1,0 +1,20 @@
+[package]
+name = "usb-cli"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "usb-probester-cli"
+path = "src/main.rs"
+
+[dependencies]
+usb-types = { path = "../usb-types" }
+hid-parser = { path = "../hid-parser" }
+serde_json = { workspace = true }
+clap = { version = "4", features = ["derive"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+usb-collector-macos = { path = "../usb-collector-macos" }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+usb-collector-linux = { path = "../usb-collector-linux" }

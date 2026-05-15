@@ -60,9 +60,9 @@ jobs:
           # - platform: windows-latest
           #   rust-target: ''
           #   tauri-args: ''
-          # - platform: ubuntu-22.04
-          #   rust-target: ''
-          #   tauri-args: ''
+          - platform: ubuntu-22.04
+            rust-target: ''
+            tauri-args: ''
 
     runs-on: ${{ matrix.platform }}
 
@@ -86,7 +86,7 @@ jobs:
       - name: Cache Rust build artifacts
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: src-tauri
+          workspaces: . -> target
 
       - name: Install Linux system dependencies
         if: matrix.platform == 'ubuntu-22.04'
@@ -239,6 +239,11 @@ jobs:
           args: ${{ matrix.tauri-args }}
           releaseId: ${{ steps.latest-release.outputs.id }}
 
+      - name: Build CLI
+        run: >
+          cargo build --release -p usb-cli
+          ${{ matrix.rust-target && format('--target {0}', matrix.rust-target) || '' }}
+
       # ── macOS: delete temporary keychain ────────────────────────────────────
       - name: Delete macOS build keychain
         if: >
@@ -249,6 +254,23 @@ jobs:
         run: security delete-keychain "$KEYCHAIN_PATH" || true
 
       # ── Upload build artifacts ───────────────────────────────────────────────
+      - name: Upload CLI to release
+        if: inputs.upload_to_release && steps.latest-release.outputs.id != ''
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ -n "${{ matrix.rust-target }}" ]; then
+            cli_bin="target/${{ matrix.rust-target }}/release/usb-probester-cli"
+          else
+            cli_bin="target/release/usb-probester-cli"
+          fi
+          if [ -f "$cli_bin" ]; then
+            tag=$(gh api "repos/$GITHUB_REPOSITORY/releases/${{ steps.latest-release.outputs.id }}" --jq '.tag_name')
+            os=${{ matrix.platform == 'macos-latest' && 'macos-aarch64' || 'linux-x86_64' }}
+            gh release upload --clobber "$tag" "$cli_bin#usb-probester-cli-${os}"
+          fi
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -261,4 +283,6 @@ jobs:
             src-tauri/target/**/release/bundle/**/*.deb
             src-tauri/target/**/release/bundle/**/*.rpm
             src-tauri/target/**/release/bundle/**/*.AppImage
+            target/**/release/usb-probester-cli
+            target/**/release/usb-probester-cli.exe
           if-no-files-found: warn
