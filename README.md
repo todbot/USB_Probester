@@ -18,9 +18,7 @@ configuration descriptors and a parsed rendering of HID report descriptors.
 
 Apple quietly dropped it. The last version stopped working on modern macOS
 (Apple Silicon / macOS 12+), the download was removed from the developer portal,
-and no replacement was provided. The closest surviving alternative,
-[USBDeview](https://www.nirsoft.net/utils/usb_devices_view.html), is
-Windows-only.
+and no replacement was provided. 
 
 USBProbester aims to fill that gap with a native, cross-platform tool that
 shows the same level of detail USB Prober did — and eventually more.
@@ -148,3 +146,11 @@ USB enumeration uses two passes:
 - [Apple Hardware IO Tools (archived)](https://developer.apple.com/download/all/?q=hardware%20io%20tools) — the original USB Prober
 - [Microsoft USBView](https://github.com/microsoft/Windows-driver-samples/tree/main/usb/usbview) — reference for Windows IOCTL-based USB enumeration
 - [Linux `/sys/bus/usb`](https://www.kernel.org/doc/html/latest/driver-api/usb/usb.html) — sysfs USB device tree used by the planned Linux collector
+
+
+### Related tools
+
+- [lsusb for Linux](https://linux.wiki/docs/commands/system-info/lsusb/) - Linux, no HID report descriptor usually
+- [lsusb for Mac OS X](https://github.com/jlhonora/lsusb) - MacOS only and only partial data
+- [USBDeview](https://www.nirsoft.net/utils/usb_devices_view.html) - Windows-only
+- [USB Device Tree Viewer](https://www.uwe-sieber.de/usbtreeview_e.html) - Windows-only
