@@ -1,24 +1,51 @@
+/* ── Color tokens ─────────────────────────────────────────────────────────── */
+
+:root {
+  --bg:           #f2f2f2;
+  --bg-surface:   #ffffff;
+  --bg-hover:     #dde5f0;
+  --bg-selected:  #2f6fd0;
+  --border:       #c8c8c8;
+  --text:         #1a1a1a;
+  --text-dim:     #555;
+  --text-muted:   #999;
+  --text-val:     #222;
+  --text-toggle:  #444;
+  --dots:         #bbb;
+  --hex:          #555;
+  --accent:       #396cd8;
+  --accent-dark:  #2a55bb;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg:           #1e1e1e;
+    --bg-surface:   #2c2c2c;
+    --bg-hover:     #2e2e2e;
+    --bg-selected:  #2a5bbf;
+    --border:       #3a3a3a;
+    --text:         #e8e8e8;
+    --text-dim:     #aaa;
+    --text-muted:   #666;
+    --text-val:     #d0d0d0;
+    --text-toggle:  #999;
+    --dots:         #4a4a4a;
+    --hex:          #888;
+    --accent:       #4d84f0;
+    --accent-dark:  #3a70db;
+  }
+}
+
+/* ── Base ─────────────────────────────────────────────────────────────────── */
+
 :root {
   font-family: "SF Mono", "Menlo", "Monaco", "Courier New", monospace;
   font-size: 13px;
   font-weight: 500;
   line-height: 1.6;
-  color: #000;
-  background: #f5f5f5;
+  color: var(--text);
+  background: var(--bg);
   -webkit-font-smoothing: antialiased;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root { color: #eee; background: #1c1c1c; }
-  header { border-color: #333; }
-  .tree-row.clickable:hover { background: #2a2a2a; }
-  .toggle { color: #aaa; }
-  .val { color: #ccc; }
-  .dots { background-image: radial-gradient(circle, #555 1px, transparent 1px); }
-  .hex-dump { color: #999; }
-  .error { background: #3a0f0f; border-color: #a03030; color: #f88; }
-  button { background: #2a2a2a; border-color: #444; color: #ddd; }
-  button:hover { border-color: #6699cc; }
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -28,37 +55,45 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  background: var(--bg);
 }
+
+/* ── Header ───────────────────────────────────────────────────────────────── */
 
 header {
   display: flex;
   align-items: center;
   gap: 10px;
   padding: 6px 10px;
-  border-bottom: 1px solid #ccc;
+  border-bottom: 1px solid var(--border);
   flex-shrink: 0;
-  background: inherit;
+  background: var(--bg);
 }
 
-h1 { font-size: 1.05em; font-weight: 600; }
+h1 { font-size: 1.05em; font-weight: 600; color: var(--text); }
+
+/* ── Buttons ──────────────────────────────────────────────────────────────── */
 
 button {
-  border: 1px solid #b0b0b0;
+  border: 1px solid var(--border);
   border-radius: 4px;
   padding: 2px 10px;
   font-size: 11px;
   font-family: inherit;
   cursor: pointer;
-  background: #fff;
+  background: var(--bg-surface);
+  color: var(--text);
 }
-button:hover { border-color: #4477bb; }
-button:disabled { opacity: 0.45; cursor: default; }
+button:hover { border-color: var(--accent); }
+button:disabled { opacity: 0.4; cursor: default; }
+
+/* ── Error ────────────────────────────────────────────────────────────────── */
 
 .error {
   padding: 5px 10px;
-  background: #fff0f0;
-  border-bottom: 1px solid #d04040;
-  color: #c00;
+  background: color-mix(in srgb, #d04040 15%, var(--bg));
+  border-bottom: 1px solid #a03030;
+  color: #e05050;
   font-size: 11px;
   flex-shrink: 0;
 }
@@ -69,9 +104,9 @@ button:disabled { opacity: 0.45; cursor: default; }
   padding: 4px 2px;
 }
 
-.empty { color: #999; padding: 10px; }
+.empty { color: var(--text-muted); padding: 10px; }
 
-/* ── tree ─────────────────────────────────────────────────────────────────── */
+/* ── Tree ─────────────────────────────────────────────────────────────────── */
 
 .tree-node { }
 
@@ -84,18 +119,17 @@ button:disabled { opacity: 0.45; cursor: default; }
 }
 
 .tree-row.clickable { cursor: pointer; }
-.tree-row.clickable:hover { background: #e2e8f0; }
+.tree-row.clickable:hover { background: var(--bg-hover); }
 
 .toggle {
   width: 16px;
   flex-shrink: 0;
   font-size: 13px;
-  color: #333;
+  color: var(--text-toggle);
   user-select: none;
 }
 
-/* flex-basis is set via inline style (280px − depth×16px) so the value column
-   lands at the same absolute x-position at every nesting level */
+/* flex-basis set via inline style so value column stays at constant x across depths */
 .label-area {
   min-width: 0;
   display: flex;
@@ -104,24 +138,22 @@ button:disabled { opacity: 0.45; cursor: default; }
   flex-shrink: 0;
 }
 
-.lbl { flex-shrink: 0; }
+.lbl { flex-shrink: 0; color: var(--text); }
 
-/* dot leader fills remaining space inside label-area */
 .dots {
   flex: 1;
   overflow: hidden;
   min-width: 8px;
-  background-image: radial-gradient(circle, #aaa 1px, transparent 1px);
+  background-image: radial-gradient(circle, var(--dots) 1px, transparent 1px);
   background-size: 5px 100%;
   background-repeat: repeat-x;
   background-position: 0 55%;
   margin: 0 3px;
 }
 
-/* value starts at the 52% mark, left-aligned */
 .val {
   flex: 1;
-  color: #111;
+  color: var(--text-val);
   padding-left: 4px;
 }
 
@@ -130,12 +162,12 @@ button:disabled { opacity: 0.45; cursor: default; }
 .hex-dump {
   font-family: inherit;
   font-size: 12px;
-  color: #444;
+  color: var(--hex);
   line-height: 1.6;
   white-space: pre;
 }
 
-/* ── view toggle ──────────────────────────────────────────────────────────── */
+/* ── View toggle ──────────────────────────────────────────────────────────── */
 
 .view-toggle {
   display: flex;
@@ -149,13 +181,9 @@ button:disabled { opacity: 0.45; cursor: default; }
 }
 .view-toggle button:first-child { border-radius: 4px 0 0 4px; }
 .view-toggle button:last-child  { border-radius: 0 4px 4px 0; border-right-width: 1px; }
-.view-toggle button.active { background: #396cd8; border-color: #2a55bb; color: #fff; }
+.view-toggle button.active { background: var(--accent); border-color: var(--accent-dark); color: #fff; }
 
-@media (prefers-color-scheme: dark) {
-  .view-toggle button.active { background: #2a55bb; border-color: #1e3f8f; }
-}
-
-/* ── split view ───────────────────────────────────────────────────────────── */
+/* ── Split view ───────────────────────────────────────────────────────────── */
 
 .split-view {
   flex: 1;
@@ -167,7 +195,8 @@ button:disabled { opacity: 0.45; cursor: default; }
   width: 240px;
   flex-shrink: 0;
   overflow-y: auto;
-  border-right: 1px solid #ccc;
+  border-right: 1px solid var(--border);
+  background: var(--bg);
   padding: 2px 0;
 }
 
@@ -178,27 +207,33 @@ button:disabled { opacity: 0.45; cursor: default; }
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  background: var(--bg);
 }
 
 .device-item {
   padding: 4px 8px;
   cursor: pointer;
   line-height: 1.4;
+  color: var(--text);
 }
-.device-item:hover { background: #e8eef8; }
-.device-item.selected { background: #3060c8; color: #fff; }
+.device-item:hover { background: var(--bg-hover); }
+.device-item.selected { background: var(--bg-selected); color: #fff; }
 
-.di-speed  { display: block; font-size: 10px; color: #888; }
-.di-vidpid { display: block; font-weight: 600; }
+.di-speed   { display: block; font-size: 10px; color: var(--text-muted); }
+.di-vidpid  { display: block; font-weight: 600; }
 .di-product { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-.device-item.selected .di-speed { color: #aad; }
+.device-item.selected .di-speed  { color: #aac4f0; }
+.device-item.selected .di-vidpid { color: #fff; }
+
+/* ── Tab bar ──────────────────────────────────────────────────────────────── */
 
 .tab-bar {
   display: flex;
   gap: 0;
   padding: 6px 8px;
-  border-bottom: 1px solid #ccc;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
   flex-shrink: 0;
 }
 .tab {
@@ -209,7 +244,7 @@ button:disabled { opacity: 0.45; cursor: default; }
 }
 .tab:first-child { border-radius: 4px 0 0 4px; }
 .tab:last-child  { border-radius: 0 4px 4px 0; border-right-width: 1px; }
-.tab.active { background: #396cd8; border-color: #2a55bb; color: #fff; }
+.tab.active { background: var(--accent); border-color: var(--accent-dark); color: #fff; }
 
 .tab-content {
   flex: 1;
@@ -222,14 +257,6 @@ button:disabled { opacity: 0.45; cursor: default; }
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #999;
+  color: var(--text-muted);
   font-size: 13px;
-}
-
-@media (prefers-color-scheme: dark) {
-  .split-left { border-color: #333; }
-  .tab-bar { border-color: #333; }
-  .device-item:hover { background: #2a2a2a; }
-  .device-item.selected { background: #1e3f8f; }
-  .tab.active { background: #2a55bb; border-color: #1e3f8f; }
 }
