@@ -14,6 +14,7 @@ import type {
   HidNode,
   HidIoFlags,
   CollectionKind,
+  ClassSpecificDescriptor,
 } from "./bindings";
 import "./App.css";
 
@@ -292,6 +293,90 @@ function HidDescriptorNode({ hid }: { hid: HidInterface_Serialize }) {
   );
 }
 
+function u16le(data: number[], off: number) {
+  return data[off] | (data[off + 1] << 8);
+}
+
+function ClassSpecificNode({ cs, ifaceClass }: { cs: ClassSpecificDescriptor; ifaceClass: number }) {
+  const { descriptor_type: typ, descriptor_subtype: sub, data } = cs;
+
+  // HID class descriptor (0x21)
+  if (typ === 0x21) {
+    const bcdHID = u16le(data, 0);
+    const hidDescTypeName: Record<number, string> = { 0x22: "Report", 0x23: "Physical" };
+    return (
+      <TreeNode label="HID Descriptor">
+        <Leaf label="bcdHID:" value={hex4(bcdHID)} />
+        <Leaf label="bCountryCode:" value={`${data[2]}`} />
+        <Leaf label="bNumDescriptors:" value={`${data[3]}`} />
+        {data[3] > 0 && <>
+          <Leaf label="bDescriptorType:" value={`${hidDescTypeName[data[4]] ?? hex2(data[4])}`} />
+          <Leaf label="wDescriptorLength:" value={`${u16le(data, 5)}`} />
+        </>}
+      </TreeNode>
+    );
+  }
+
+  // CS_INTERFACE (0x24) — decode by interface class
+  if (typ === 0x24) {
+    // CDC (class 2)
+    if (ifaceClass === 0x02) {
+      const cdcSubtypeNames: Record<number, string> = {
+        0x00: "CDC Header Functional Descriptor",
+        0x01: "CDC Call Management Functional Descriptor",
+        0x02: "CDC Abstract Control Management Functional Descriptor",
+        0x03: "CDC Direct Line Management Functional Descriptor",
+        0x06: "CDC Union Functional Descriptor",
+        0x0F: "CDC MDLM Functional Descriptor",
+        0x10: "CDC MDLM Detail Functional Descriptor",
+      };
+      const label = cdcSubtypeNames[sub] ?? `CDC Class-Specific Descriptor (subtype ${hex2(sub)})`;
+      return (
+        <TreeNode label={label}>
+          {sub === 0x00 && data.length >= 2 && <Leaf label="bcdCDC:" value={hex4(u16le(data, 0))} />}
+          {sub === 0x01 && data.length >= 2 && <>
+            <Leaf label="bmCapabilities:" value={hex2(data[0])} />
+            <Leaf label="bDataInterface:" value={`${data[1]}`} />
+          </>}
+          {sub === 0x02 && data.length >= 1 && <Leaf label="bmCapabilities:" value={hex2(data[0])} />}
+          {sub === 0x06 && data.length >= 2 && <>
+            <Leaf label="bMasterInterface:" value={`${data[0]}`} />
+            {data.slice(1).map((v, i) => <Leaf key={i} label={`bSlaveInterface${i}:`} value={`${v}`} />)}
+          </>}
+          {![0x00,0x01,0x02,0x06].includes(sub) && <Leaf label="data:" value={data.map(b => b.toString(16).padStart(2,"0")).join(" ")} />}
+        </TreeNode>
+      );
+    }
+
+    // Audio (class 1) — show generic for now
+    if (ifaceClass === 0x01) {
+      return (
+        <TreeNode label={`Audio Class-Specific Descriptor (subtype ${hex2(sub)})`}>
+          <Leaf label="data:" value={data.map(b => b.toString(16).padStart(2,"0")).join(" ")} />
+        </TreeNode>
+      );
+    }
+
+    // Generic fallback
+    return (
+      <TreeNode label={`Class-Specific Interface Descriptor (subtype ${hex2(sub)})`}>
+        <Leaf label="data:" value={data.map(b => b.toString(16).padStart(2,"0")).join(" ")} />
+      </TreeNode>
+    );
+  }
+
+  // CS_ENDPOINT (0x25)
+  if (typ === 0x25) {
+    return (
+      <TreeNode label={`Class-Specific Endpoint Descriptor (subtype ${hex2(sub)})`}>
+        <Leaf label="data:" value={data.map(b => b.toString(16).padStart(2,"0")).join(" ")} />
+      </TreeNode>
+    );
+  }
+
+  return null;
+}
+
 function InterfaceNode({
   iface,
   device,
@@ -316,6 +401,9 @@ function InterfaceNode({
         return name ? `${sub}   (${name})` : `${sub}`;
       })()} />
       <Leaf label="Interface Protocol:" value={`${iface.b_interface_protocol}`} />
+      {(iface.class_descriptors ?? []).map((cs, i) => (
+        <ClassSpecificNode key={i} cs={cs} ifaceClass={iface.b_interface_class} />
+      ))}
       {hid && <HidDescriptorNode hid={hid} />}
       {iface.endpoints.map((ep, i) => (
         <EndpointNode key={i} ep={ep} />
@@ -501,6 +589,7 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [view, setView] = useState<View>("tree");
+  const [autoRefresh, setAutoRefresh] = useState(false);
 
   async function saveOutput() {
     let path = await save({ defaultPath: "usb-devices.txt" });
@@ -561,18 +650,37 @@ export default function App() {
     return () => { unlisten?.(); };
   }, []);
 
+  useEffect(() => {
+    if (!autoRefresh) return;
+    let unlisten: (() => void) | undefined;
+    listen("usb-changed", () => { refreshRef.current(); })
+      .then(f => { unlisten = f; });
+    return () => { unlisten?.(); };
+  }, [autoRefresh]);
+
   return (
     <div className="app">
       <header>
-        <h1>USB Probester</h1>
-        <button onClick={refresh} disabled={loading}>
-          {loading ? "Refreshing…" : "Refresh"}
-        </button>
-        <button onClick={saveOutput} disabled={devices.length === 0}>Save Output</button>
-        <button onClick={saveJson} disabled={devices.length === 0}>Save JSON</button>
-        <div className="view-toggle">
-          <button className={view === "tree" ? "active" : ""} onClick={() => setView("tree")}>Tree</button>
-          <button className={view === "split" ? "active" : ""} onClick={() => setView("split")}>Split</button>
+        <div className="header-start">
+          <h1>USB Probester</h1>
+          <button onClick={refresh} disabled={loading}>
+            {loading ? "Refreshing…" : "Refresh"}
+          </button>
+          <label className="auto-toggle">
+            <input type="checkbox" checked={autoRefresh} onChange={e => setAutoRefresh(e.target.checked)} />
+            <span className="auto-toggle-track" />
+            Auto
+          </label>
+        </div>
+        <div className="header-mid">
+          <button onClick={saveOutput} disabled={devices.length === 0}>Save Output</button>
+          <button onClick={saveJson} disabled={devices.length === 0}>Save JSON</button>
+        </div>
+        <div className="header-end">
+          <div className="view-toggle">
+            <button className={view === "tree" ? "active" : ""} onClick={() => setView("tree")}>Tree</button>
+            <button className={view === "split" ? "active" : ""} onClick={() => setView("split")}>Split</button>
+          </div>
         </div>
       </header>
 

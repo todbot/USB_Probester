@@ -14,7 +14,9 @@
       {
         "title": "USB Probester",
         "width": 1000,
-        "height": 600
+        "height": 600,
+        "minWidth": 775,
+        "minHeight": 300
       }
     ],
     "security": {

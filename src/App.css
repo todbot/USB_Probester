@@ -63,14 +63,32 @@
 header {
   display: flex;
   align-items: center;
-  gap: 10px;
   padding: 6px 10px;
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
   background: var(--bg);
 }
 
-h1 { font-size: 1.05em; font-weight: 600; color: var(--text); }
+.header-start {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+}
+
+.header-mid {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.header-end {
+  flex: 1;
+  display: flex;
+  justify-content: flex-end;
+}
+
+h1 { font-size: 1.05em; font-weight: 600; color: var(--text); margin-right: 24px; }
 
 /* ── Buttons ──────────────────────────────────────────────────────────────── */
 
@@ -167,11 +185,49 @@ button:disabled { opacity: 0.4; cursor: default; }
   white-space: pre;
 }
 
+/* ── Auto-refresh toggle ──────────────────────────────────────────────────── */
+
+.auto-toggle {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+  font-size: 11px;
+  color: var(--text-dim);
+  user-select: none;
+}
+.auto-toggle input { display: none; }
+.auto-toggle-track {
+  width: 28px;
+  height: 16px;
+  border-radius: 8px;
+  background: var(--border);
+  border: 1px solid var(--border);
+  position: relative;
+  flex-shrink: 0;
+  transition: background 0.15s, border-color 0.15s;
+}
+.auto-toggle-track::after {
+  content: "";
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #fff;
+  top: 2px;
+  left: 2px;
+  transition: left 0.15s;
+}
+.auto-toggle input:checked + .auto-toggle-track {
+  background: var(--accent);
+  border-color: var(--accent-dark);
+}
+.auto-toggle input:checked + .auto-toggle-track::after { left: 14px; }
+
 /* ── View toggle ──────────────────────────────────────────────────────────── */
 
 .view-toggle {
   display: flex;
-  margin-left: auto;
 }
 .view-toggle button {
   border-radius: 0;

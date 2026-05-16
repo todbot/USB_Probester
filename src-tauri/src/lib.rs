@@ -127,6 +127,21 @@ pub fn run() {
                 app.emit("menu-action", event.id().as_ref()).ok();
             });
 
+            // Hotplug watcher — emits "usb-changed" on any connect/disconnect.
+            let app_handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                use futures_util::StreamExt;
+                match nusb::watch_devices() {
+                    Ok(watch) => {
+                        let mut watch = Box::pin(watch);
+                        while watch.next().await.is_some() {
+                            app_handle.emit("usb-changed", ()).ok();
+                        }
+                    }
+                    Err(e) => eprintln!("hotplug watch failed: {e}"),
+                }
+            });
+
             Ok(())
         })
         .run(tauri::generate_context!())
