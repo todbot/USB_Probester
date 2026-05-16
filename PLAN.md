@@ -134,23 +134,33 @@ device. `location_id` is set to the sysfs basename (e.g. `"2-4"`, `"2-2.3"`).
 
 ---
 
-## Windows collector
+## Windows collector ✓ basic done — full descriptors TODO
 
-The hard one. There's no equivalent shell tool that prints descriptors.
-The canonical path is the same one Microsoft's open-source USBView uses:
+`crates/usb-collector-windows/src/lib.rs` — follows the macOS pattern using nusb.
 
-1. Open each USB hub via `CreateFile(\\.\HCD0)` etc.
-2. For each port, send `IOCTL_USB_GET_NODE_CONNECTION_INFORMATION_EX` to
-   discover the device.
-3. Send `IOCTL_USB_GET_DESCRIPTOR_FROM_NODE_CONNECTION` to fetch device,
-   config, and string descriptors as raw bytes.
-4. For HID, `HidD_GetPreparsedData` + `HidP_GetCaps` gives parsed; for
-   the raw report descriptor, use `IOCTL_HID_GET_COLLECTION_DESCRIPTOR`.
+**What works:**
+- `nusb::list_devices()` enumerates all USB devices
+- Devices with WinUSB driver loaded: full device descriptor + config descriptors via `dev_info.open()`
+- All devices: VID/PID, speed, manufacturer/product/serial strings
+- `location_id` constructed from `{vid:04x}:{pid:04x}:{serial_or_port_chain}`
+
+**What's missing — the hard parts:**
+
+*Full descriptors for class-driver devices:* HID keyboards/mice/webcams etc. are owned
+by HID.sys and can't be opened via nusb/WinUSB. The canonical path (used by Microsoft's
+USBView) is to go through the hub driver:
+1. Enumerate hubs via `CreateFile(\\.\HCD0)` etc.
+2. Per-port: `IOCTL_USB_GET_NODE_CONNECTION_INFORMATION_EX`
+3. Per-device: `IOCTL_USB_GET_DESCRIPTOR_FROM_NODE_CONNECTION` → raw bytes
+
+*HID report descriptors:* use `HidD_GetReportDescriptor` (hid.dll) via `windows-sys`.
+Match devices to HID paths by VID/PID/serial or instance ID, similar to how macOS
+uses ioreg LocationID correlation.
 
 Microsoft's USBView source is the reference:
 `github.com/microsoft/Windows-driver-samples/tree/main/usb/usbview`.
-Port the relevant ioctls to Rust using the `windows` crate. This is a
-real chunk of work — budget it as the bulk of the Windows port.
+Add `windows-sys` with `Win32_Devices_HumanInterfaceDevice` + `Win32_Storage_FileSystem`
+features. This is a real chunk of work — budget it as the bulk of completing the Windows port.
 
 ---
 
@@ -243,7 +253,7 @@ Platform dispatch mirrors `src-tauri/src/lib.rs`.
 5. ~~Linux collector via `/sys`.~~ ✓ done
 6. ~~Frontend tree + descriptor panels.~~ ✓ done
 7. Hotplug. ← **next**
-8. Windows via ioctls — the slog.
+8. ~~Windows basic enumeration (nusb).~~ ✓ done — hub IOCTLs + HID still TODO
 
 The design holds up because the report descriptor bytes are the same
 bytes regardless of how they were obtained, AND the parser is fully

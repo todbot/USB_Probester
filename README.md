@@ -33,11 +33,15 @@ output format and correctness.
 
 ## Status
 
-| Platform | Collector   | HID Parser | GUI        | CLI        |
-|----------|-------------|------------|------------|------------|
-| macOS    | ✓ working   | ✓ working  | ✓ working  | ✓ working  |
-| Linux    | ✓ working   | ✓ shared   | ✓ working  | ✓ working  |
-| Windows  | planned     | ✓ shared   | planned    | planned    |
+| Platform | Collector        | HID Parser | GUI        | CLI        |
+|----------|------------------|------------|------------|------------|
+| macOS    | ✓ full           | ✓ working  | ✓ working  | ✓ working  |
+| Linux    | ✓ full           | ✓ shared   | ✓ working  | ✓ working  |
+| Windows  | ⚠ partial¹       | ✓ shared   | ✓ working  | ✓ working  |
+
+¹ WinUSB devices show full descriptors; devices using HID.sys, usbstor, and other
+class drivers show VID/PID, speed, and strings only. HID report descriptors not yet
+implemented. Full descriptor support requires hub IOCTLs (planned).
 
 ---
 
@@ -45,14 +49,15 @@ output format and correctness.
 
 ```
 crates/
-  usb-types/            — shared Rust data model (serde + specta types)
-  usb-collector-macos/  — macOS USB enumeration via nusb + ioreg HID pass
-  usb-collector-linux/  — Linux USB enumeration via nusb + sysfs parsing
-  hid-parser/           — platform-agnostic HID report descriptor parser
-  usb-cli/              — standalone CLI binary (usb-probester-cli)
-src-tauri/              — Tauri shell, backend commands, text formatter
-src/                    — React/TypeScript frontend
-tests/fixtures/         — reference output from original USB Prober.app
+  usb-types/              — shared Rust data model (serde + specta types)
+  usb-collector-macos/    — macOS USB enumeration via nusb + ioreg HID pass
+  usb-collector-linux/    — Linux USB enumeration via nusb + sysfs parsing
+  usb-collector-windows/  — Windows USB enumeration via nusb (partial)
+  hid-parser/             — platform-agnostic HID report descriptor parser
+  usb-cli/                — standalone CLI binary (usb-probester-cli)
+src-tauri/                — Tauri shell, backend commands, text formatter
+src/                      — React/TypeScript frontend
+tests/fixtures/           — reference output from original USB Prober.app
 ```
 
 ---
@@ -62,6 +67,11 @@ tests/fixtures/         — reference output from original USB Prober.app
 - **Rust** — [rustup.rs](https://rustup.rs)
 - **Node.js** — v18 or later
 - **Tauri CLI** — installed via npm (see below)
+
+**Windows only:** install [Visual Studio Build Tools 2022](https://visualstudio.microsoft.com/downloads/#build-tools-for-visual-studio-2022)
+with the **"Desktop development with C++"** workload. Use the MSVC toolchain
+(the default from rustup on Windows) — the MinGW/GNU toolchain does not work
+with Tauri. WebView2 is pre-installed on Windows 11.
 
 ---
 
@@ -106,9 +116,10 @@ cargo build --release -p usb-cli
 
 - **Tree view** — full collapsible descriptor tree matching Mac USB Prober's layout
 - **Split view** — device list on the left, tabbed descriptor panels on the right
-- **Save Output** — native save dialog; writes Mac USB Prober-style `.txt`
-- **Save JSON** — native save dialog; writes pretty-printed `.json`
-- **Refresh** — re-enumerates all connected devices on demand
+- **Save Output** (`Cmd/Ctrl+S`) — native save dialog; writes Mac USB Prober-style `.txt`
+- **Save JSON** (`Cmd/Ctrl+Shift+S`) — native save dialog; writes pretty-printed `.json`
+- **Refresh** (`Cmd/Ctrl+R`) — re-enumerates all connected devices on demand
+- Native menu bar with File, View, Edit, and Window menus
 - Light and dark mode
 
 ---
@@ -178,6 +189,15 @@ Everything comes from sysfs — no device open, no elevated privileges:
    `/sys/bus/usb/devices/<dev>/<dev>:<cfg>.<iface>/0003:<VID>:<PID>.<N>/report_descriptor`.
    The `0003:` prefix identifies HID bus entries. Collected by
    `crates/usb-collector-linux/src/hid.rs`.
+
+### Windows (`crates/usb-collector-windows`)
+
+Uses `nusb::list_devices()` for enumeration. Devices with the WinUSB driver
+loaded can be opened for full descriptor access. Devices using Windows class
+drivers (HID.sys for keyboards/mice, usbstor for drives, etc.) cannot be
+opened via nusb — those show VID/PID, speed, and strings but no interface or
+endpoint descriptors. Full descriptor support via hub IOCTLs and HID report
+descriptor support via `HidD_GetReportDescriptor` are planned.
 
 ### macOS (`crates/usb-collector-macos`)
 

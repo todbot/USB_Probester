@@ -13,6 +13,7 @@ See `PLAN.md` for the full architecture.
   - `crates/usb-types` — shared data model (serde + specta types)
   - `crates/usb-collector-macos` — nusb + ioreg HID pass collector (cfg-gated)
   - `crates/usb-collector-linux` — `/sys`-based collector (cfg-gated)
+  - `crates/usb-collector-windows` — nusb-based collector (cfg-gated); partial descriptor support
   - `crates/hid-parser` — platform-agnostic HID report descriptor parser
   - `crates/usb-cli` — standalone CLI binary (`usb-probester-cli`)
   - `src-tauri` — Tauri shell, backend commands, text formatter
@@ -30,7 +31,7 @@ See `PLAN.md` for the full architecture.
 5. ~~Linux collector (`/sys`)~~ ✓ done
 6. ~~Frontend tree + descriptor panels~~ ✓ done
 7. Hotplug  ← **next**
-8. Windows ioctls
+8. ~~Windows basic enumeration (nusb)~~ ✓ done — HID descriptors + full config access via hub IOCTLs still TODO
 
 ## Platform gating
 
@@ -95,6 +96,19 @@ npm run tauribuild
 npm run clean
 ```
 
+## Windows collector notes
+
+`crates/usb-collector-windows/src/lib.rs` — nusb-based, cfg-gated with `#![cfg(target_os = "windows")]`.
+
+- `nusb::list_devices()` for metadata (port_chain, strings, speed)
+- Tries `dev_info.open()` for full descriptor access (works for WinUSB devices)
+- Falls back to partial info (VID/PID/strings/speed only) for devices owned by HID.sys,
+  usbstor, CDC, etc. — their class driver blocks nusb from opening them
+- `location_id` is `"{vid:04x}:{pid:04x}:{serial}"` or `"…:{port.chain}"` if no serial
+- `bus_number` is always 0 (Windows doesn't expose it the same way)
+- HID report descriptors not yet implemented (needs `HidD_GetReportDescriptor` via `windows-sys`)
+- Full config descriptor access for non-WinUSB devices needs `IOCTL_USB_GET_DESCRIPTOR_FROM_NODE_CONNECTION`
+
 ## Current focus
 
-Step 7: Hotplug. Steps 1–6 are all done.
+Step 7: Hotplug. Step 8 (Windows) has basic enumeration working; HID + full descriptor IOCTLs are next for Windows.
