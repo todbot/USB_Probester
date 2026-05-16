@@ -86,7 +86,7 @@ jobs:
           workspaces: . -> target
 
       - name: Install Linux system dependencies
-        if: matrix.platform == 'ubuntu-22.04'
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -111,7 +111,7 @@ jobs:
       # ── macOS: import Developer ID certificate into a temporary keychain ────
       - name: Import macOS signing certificate
         if: >
-          (matrix.platform == 'macos-latest')
+          runner.os == 'macOS'
           && inputs.sign_macos
         env:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
@@ -141,13 +141,13 @@ jobs:
       # env block on the build step stays unconditional (simpler expression).
       - name: Set macOS signing env
         if: >
-          (matrix.platform == 'macos-latest')
+          runner.os == 'macOS'
           && inputs.sign_macos
         run: echo "APPLE_SIGNING_IDENTITY=${{ secrets.APPLE_SIGNING_IDENTITY }}" >> "$GITHUB_ENV"
 
       - name: Set macOS notarization env
         if: >
-          (matrix.platform == 'macos-latest')
+          runner.os == 'macOS'
           && inputs.notarize_macos
         run: |
           echo "APPLE_ID=${{ secrets.APPLE_ID }}" >> "$GITHUB_ENV"
@@ -160,7 +160,7 @@ jobs:
       # to the Trusted Signing service.  We then point Tauri at a custom sign
       # command so it calls signtool + dlib for every binary it packages.
       - name: Cache Trusted Signing NuGet package
-        if: matrix.platform == 'windows-latest' && inputs.sign_windows
+        if: runner.os == 'Windows' && inputs.sign_windows
         id: cache-tsc
         uses: actions/cache@v4
         with:
@@ -168,7 +168,7 @@ jobs:
           key: tsc-nuget-1.0.60
 
       - name: Configure Azure Trusted Signing
-        if: matrix.platform == 'windows-latest' && inputs.sign_windows
+        if: runner.os == 'Windows' && inputs.sign_windows
         shell: pwsh
         run: |
           # Download and unpack the Trusted Signing client NuGet package (skipped on cache hit)
@@ -239,7 +239,7 @@ jobs:
       - name: Build CLI
         shell: bash
         run: |
-          if [ "${{ matrix.platform }}" = "macos-latest" ]; then
+          if [ "$RUNNER_OS" = "macOS" ]; then
             cargo build --release -p usb-cli --target aarch64-apple-darwin
             cargo build --release -p usb-cli --target x86_64-apple-darwin
             lipo -create -output target/release/usb-probester-cli \
@@ -253,7 +253,7 @@ jobs:
       - name: Delete macOS build keychain
         if: >
           always()
-          && (matrix.platform == 'macos-latest')
+          && runner.os == 'macOS'
           && inputs.sign_macos
           && env.KEYCHAIN_PATH != ''
         run: security delete-keychain "$KEYCHAIN_PATH" || true
@@ -268,22 +268,60 @@ jobs:
           cli_bin="target/release/usb-probester-cli"
           if [ -f "$cli_bin" ]; then
             tag=$(gh api "repos/$GITHUB_REPOSITORY/releases/${{ steps.latest-release.outputs.id }}" --jq '.tag_name')
-            os=${{ matrix.platform == 'macos-latest' && 'macos-aarch64' || 'linux-x86_64' }}
+            os=$([ "$RUNNER_OS" = "macOS" ] && echo "macos-aarch64" || echo "linux-x86_64")
             gh release upload --clobber "$tag" "$cli_bin#usb-probester-cli-${os}"
           fi
 
-      - name: Upload artifacts
+      # ── Stage artifacts with canonical names ────────────────────────────────
+      - name: Stage artifacts
+        id: stage
+        shell: bash
+        run: |
+          version=$(node -p "require('./src-tauri/tauri.conf.json').version")
+
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            os=macos; arch=universal; cli_ext=""
+          elif [ "$RUNNER_OS" = "Linux" ]; then
+            os=linux; arch=x86_64; cli_ext=""
+          else
+            os=windows; arch=x86_64; cli_ext=".exe"
+          fi
+
+          gui_base="USB_Probester_${os}_${version}_${arch}"
+          cli_base="usb-probester-cli_${os}_${version}_${arch}"
+          echo "gui_base=$gui_base" >> "$GITHUB_OUTPUT"
+          echo "cli_base=$cli_base" >> "$GITHUB_OUTPUT"
+
+          gui_dir="$RUNNER_TEMP/gui"
+          mkdir -p "$gui_dir"
+          while IFS= read -r -d '' f; do
+            case "$f" in
+              *.app.tar.gz) ext="app.tar.gz" ;;
+              *)             ext="${f##*.}" ;;
+            esac
+            cp "$f" "$gui_dir/${gui_base}.${ext}"
+          done < <(find target -path "*/bundle/*" \
+            \( -name "*.dmg" -o -name "*.app.tar.gz" -o -name "*.deb" \
+               -o -name "*.AppImage" -o -name "*.rpm" \
+               -o -name "*.msi" -o -name "*-setup.exe" \) -print0)
+          echo "gui_dir=$gui_dir" >> "$GITHUB_OUTPUT"
+
+          cli_dir="$RUNNER_TEMP/cli"
+          mkdir -p "$cli_dir"
+          cp "target/release/usb-probester-cli${cli_ext}" \
+             "$cli_dir/${cli_base}${cli_ext}"
+          echo "cli_dir=$cli_dir" >> "$GITHUB_OUTPUT"
+
+      - name: Upload GUI artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.platform }}-${{ matrix.rust-target || 'default' }}
-          path: |
-            target/**/release/bundle/**/*.dmg
-            target/**/release/bundle/**/*.app.tar.gz
-            target/**/release/bundle/**/*.msi
-            target/**/release/bundle/**/*.exe
-            target/**/release/bundle/**/*.deb
-            target/**/release/bundle/**/*.rpm
-            target/**/release/bundle/**/*.AppImage
-            target/**/release/usb-probester-cli
-            target/**/release/usb-probester-cli.exe
+          name: ${{ steps.stage.outputs.gui_base }}
+          path: ${{ steps.stage.outputs.gui_dir }}/
+          if-no-files-found: warn
+
+      - name: Upload CLI artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.stage.outputs.cli_base }}
+          path: ${{ steps.stage.outputs.cli_dir }}/
           if-no-files-found: warn
