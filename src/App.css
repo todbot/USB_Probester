@@ -1,15 +1,15 @@
 /* ── Color tokens ─────────────────────────────────────────────────────────── */
 
 :root {
-  --bg:           #f2f2f2;
+  --bg:           #ffffff;
   --bg-surface:   #ffffff;
   --bg-hover:     #dde5f0;
   --bg-selected:  #2f6fd0;
   --border:       #c8c8c8;
-  --text:         #1a1a1a;
+  --text:         #000000;
   --text-dim:     #555;
   --text-muted:   #999;
-  --text-val:     #222;
+  --text-val:     #022;
   --text-toggle:  #444;
   --dots:         #bbb;
   --hex:          #555;

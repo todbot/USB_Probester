@@ -30,8 +30,9 @@ See `PLAN.md` for the full architecture.
 4. ~~Tauri wiring + basic frontend~~ ✓ done
 5. ~~Linux collector (`/sys`)~~ ✓ done
 6. ~~Frontend tree + descriptor panels~~ ✓ done
-7. Hotplug  ← **next**
+7. ~~Hotplug (nusb watch_devices + auto-refresh toggle)~~ ✓ done
 8. ~~Windows basic enumeration (nusb)~~ ✓ done — HID descriptors + full config access via hub IOCTLs still TODO
+9. ~~Class-specific descriptors (CS_INTERFACE/HID/IAD)~~ ✓ done — CDC decoded; Audio/MIDI still generic hex
 
 ## Platform gating
 
@@ -111,4 +112,7 @@ npm run clean
 
 ## Current focus
 
-Step 7: Hotplug. Step 8 (Windows) has basic enumeration working; HID + full descriptor IOCTLs are next for Windows.
+Steps 7 and 9 done. Remaining work:
+- Audio/MIDI class-specific descriptor decoding (currently shows generic hex)
+- Windows HID descriptors (`HidD_GetReportDescriptor` via `windows-sys`)
+- Windows full config descriptor access for non-WinUSB devices (hub IOCTLs)

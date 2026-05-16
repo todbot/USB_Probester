@@ -54,6 +54,7 @@ pub fn parse_config_descriptors(raw: &[u8]) -> Vec<ConfigDescriptor> {
 
         let raw_bytes = raw[pos..end].to_vec();
         let class_map = usb_types::extract_class_specific(&raw_bytes);
+        let interface_associations = usb_types::extract_iads(&raw_bytes);
         let interfaces = parse_interface_descriptors(&raw[pos + 9..end], &class_map);
 
         configs.push(ConfigDescriptor {
@@ -62,6 +63,7 @@ pub fn parse_config_descriptors(raw: &[u8]) -> Vec<ConfigDescriptor> {
             bm_attributes:         raw[pos + 7],
             b_max_power:           raw[pos + 8],
             interfaces,
+            interface_associations,
             raw_bytes,
         });
 

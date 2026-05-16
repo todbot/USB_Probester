@@ -124,6 +124,7 @@ fn build_device(
         .map(|cfg| {
             let raw_bytes = cfg.as_bytes().to_vec();
             let class_map = usb_types::extract_class_specific(&raw_bytes);
+            let interface_associations = usb_types::extract_iads(&raw_bytes);
             let interfaces: Vec<InterfaceDescriptor> = cfg
                 .interfaces()
                 .flat_map(|igroup| {
@@ -158,6 +159,7 @@ fn build_device(
                 bm_attributes: cfg.attributes(),
                 b_max_power: cfg.max_power(),
                 interfaces,
+                interface_associations,
                 raw_bytes,
             }
         })

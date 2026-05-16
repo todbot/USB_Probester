@@ -34,6 +34,7 @@ export type ConfigDescriptor_Deserialize = {
 	bm_attributes: number,
 	b_max_power: number,
 	interfaces: InterfaceDescriptor_Deserialize[],
+	interface_associations?: IadDescriptor[],
 	raw_bytes?: number[],
 };
 
@@ -43,6 +44,7 @@ export type ConfigDescriptor_Serialize = {
 	bm_attributes: number,
 	b_max_power: number,
 	interfaces: InterfaceDescriptor_Serialize[],
+	interface_associations?: IadDescriptor[],
 	raw_bytes?: number[],
 };
 
@@ -114,6 +116,15 @@ export type HidIoFlags = {
 };
 
 export type HidNode = { type: "UsagePage"; page_id: number; name: string } | { type: "Usage"; usage_id: number; name: string | null } | { type: "Collection"; kind: CollectionKind; children: HidNode[] } | { type: "ReportId"; id: number } | { type: "LogicalMinimum"; value: number } | { type: "LogicalMaximum"; value: number } | { type: "PhysicalMinimum"; value: number } | { type: "PhysicalMaximum"; value: number } | { type: "UnitExponent"; value: number } | { type: "Unit"; value: number } | { type: "ReportSize"; value: number } | { type: "ReportCount"; value: number } | { type: "UsageMinimum"; value: number } | { type: "UsageMaximum"; value: number } | { type: "Input"; flags: HidIoFlags } | { type: "Output"; flags: HidIoFlags } | { type: "Feature"; flags: HidIoFlags };
+
+export type IadDescriptor = {
+	b_first_interface: number,
+	b_interface_count: number,
+	b_function_class: number,
+	b_function_sub_class: number,
+	b_function_protocol: number,
+	i_function: number,
+};
 
 export type InterfaceDescriptor = InterfaceDescriptor_Serialize | InterfaceDescriptor_Deserialize;
 

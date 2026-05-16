@@ -89,6 +89,15 @@ fn format_config_descriptor(d: &UsbDevice, cfg: &ConfigDescriptor, out: &mut Str
     let _ = writeln!(out, "        MaxPower:   {} mA", cfg.b_max_power as u16 * 2);
 
     for iface in &cfg.interfaces {
+        if let Some(iad) = cfg.interface_associations.iter()
+            .find(|a| a.b_first_interface == iface.b_interface_number)
+        {
+            let class_name = class_label(iad.b_function_class);
+            let name = string_for(d, iad.i_function)
+                .map(|s| format!("   \"{}\"", s))
+                .unwrap_or_default();
+            let _ = writeln!(out, "        Interface Association   {}{}", class_name, name);
+        }
         format_interface(d, iface, out);
     }
     for hid in &d.hid_interfaces {

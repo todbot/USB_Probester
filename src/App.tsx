@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, createContext, useContext } from "react";
+import React, { useEffect, useRef, useState, createContext, useContext } from "react";
 import type { ReactNode } from "react";
 import { save } from "@tauri-apps/plugin-dialog";
 import { listen } from "@tauri-apps/api/event";
@@ -15,6 +15,7 @@ import type {
   HidIoFlags,
   CollectionKind,
   ClassSpecificDescriptor,
+  IadDescriptor,
 } from "./bindings";
 import "./App.css";
 
@@ -413,6 +414,22 @@ function InterfaceNode({
   );
 }
 
+function IadNode({ iad, device }: { iad: IadDescriptor; device: UsbDevice_Serialize }) {
+  const className = deviceClassLabel(iad.b_function_class);
+  const name = getString(device, iad.i_function);
+  const value = name ? `${className}   "${name}"` : className;
+  return (
+    <TreeNode label="Interface Association" value={value}>
+      <Leaf label="First Interface" value={`${iad.b_first_interface}`} />
+      <Leaf label="Interface Count" value={`${iad.b_interface_count}`} />
+      <Leaf label="Function Class" value={`${iad.b_function_class}   (${className})`} />
+      <Leaf label="Function Subclass" value={`${iad.b_function_sub_class}`} />
+      <Leaf label="Interface Protocol" value={`${iad.b_function_protocol}`} />
+      <Leaf label="Function String" value={name ? `${iad.i_function}   "${name}"` : `${iad.i_function} (none)`} />
+    </TreeNode>
+  );
+}
+
 function ConfigNode({
   cfg,
   device,
@@ -435,9 +452,17 @@ function ConfigNode({
       <Leaf label="Attributes:" value={attrsLabel(cfg.bm_attributes)} />
       <Leaf label="MaxPower:" value={`${cfg.b_max_power * 2} mA`} />
       {cfg.interfaces.map((iface, i) => {
+        const iad = (cfg.interface_associations ?? []).find(
+          a => a.b_first_interface === iface.b_interface_number
+        );
         const hidIdx = hidClassIfaces.indexOf(iface);
         const hid = hidIdx >= 0 ? device.hid_interfaces[hidIdx] : undefined;
-        return <InterfaceNode key={i} iface={iface} device={device} hid={hid} />;
+        return (
+          <React.Fragment key={i}>
+            {iad && <IadNode iad={iad} device={device} />}
+            <InterfaceNode iface={iface} device={device} hid={hid} />
+          </React.Fragment>
+        );
       })}
     </TreeNode>
   );

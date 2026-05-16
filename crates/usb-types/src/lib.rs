@@ -40,7 +40,19 @@ pub struct ConfigDescriptor {
     pub b_max_power: u8,
     pub interfaces: Vec<InterfaceDescriptor>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub interface_associations: Vec<IadDescriptor>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub raw_bytes: Vec<u8>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+pub struct IadDescriptor {
+    pub b_first_interface: u8,
+    pub b_interface_count: u8,
+    pub b_function_class: u8,
+    pub b_function_sub_class: u8,
+    pub b_function_protocol: u8,
+    pub i_function: u8,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
@@ -190,4 +202,26 @@ pub fn extract_class_specific(
         pos += len;
     }
     map
+}
+
+/// Parse Interface Association Descriptors (type 0x0B) from a raw configuration descriptor blob.
+pub fn extract_iads(config_raw: &[u8]) -> Vec<IadDescriptor> {
+    let mut iads = Vec::new();
+    let mut pos = 0;
+    while pos + 2 <= config_raw.len() {
+        let len = config_raw[pos] as usize;
+        if len < 2 || pos + len > config_raw.len() { break; }
+        if config_raw[pos + 1] == 0x0B && len >= 8 {
+            iads.push(IadDescriptor {
+                b_first_interface:    config_raw[pos + 2],
+                b_interface_count:    config_raw[pos + 3],
+                b_function_class:     config_raw[pos + 4],
+                b_function_sub_class: config_raw[pos + 5],
+                b_function_protocol:  config_raw[pos + 6],
+                i_function:           config_raw[pos + 7],
+            });
+        }
+        pos += len;
+    }
+    iads
 }
