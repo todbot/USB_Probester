@@ -6,6 +6,9 @@ use usb_collector_macos::MacCollector;
 use usb_collector_linux::LinuxCollector;
 use usb_types::UsbDevice;
 
+use tauri::Emitter;
+use tauri::menu::{MenuBuilder, MenuItem, SubmenuBuilder};
+
 #[tauri::command]
 #[specta::specta]
 fn enumerate_usb() -> Result<Vec<UsbDevice>, String> {
@@ -51,6 +54,75 @@ pub fn run() {
         .invoke_handler(builder.invoke_handler())
         .setup(move |app| {
             builder.mount_events(app);
+
+            let save_text = MenuItem::with_id(app, "save_text", "Save Output…", true, Some("CmdOrCtrl+S"))?;
+            let save_json = MenuItem::with_id(app, "save_json", "Save JSON…", true, Some("CmdOrCtrl+Shift+S"))?;
+            let file_menu = SubmenuBuilder::new(app, "File")
+                .item(&save_text)
+                .item(&save_json)
+                .build()?;
+
+            let refresh = MenuItem::with_id(app, "refresh", "Refresh", true, Some("CmdOrCtrl+R"))?;
+            let view_tree = MenuItem::with_id(app, "view_tree", "Tree View", true, None::<&str>)?;
+            let view_split = MenuItem::with_id(app, "view_split", "Split View", true, None::<&str>)?;
+            let view_menu = SubmenuBuilder::new(app, "View")
+                .item(&refresh)
+                .separator()
+                .item(&view_tree)
+                .item(&view_split)
+                .build()?;
+
+            #[cfg(target_os = "macos")]
+            let app_submenu = SubmenuBuilder::new(app, "USB Probester")
+                .about(None)
+                .separator()
+                .services()
+                .separator()
+                .hide()
+                .hide_others()
+                .show_all()
+                .separator()
+                .quit()
+                .build()?;
+
+            #[cfg(target_os = "macos")]
+            let edit_menu = SubmenuBuilder::new(app, "Edit")
+                .undo()
+                .redo()
+                .separator()
+                .cut()
+                .copy()
+                .paste()
+                .select_all()
+                .build()?;
+
+            #[cfg(target_os = "macos")]
+            let window_menu = SubmenuBuilder::new(app, "Window")
+                .minimize()
+                .separator()
+                .close_window()
+                .build()?;
+
+            #[cfg(target_os = "macos")]
+            let menu = MenuBuilder::new(app)
+                .item(&app_submenu)
+                .item(&file_menu)
+                .item(&view_menu)
+                .item(&edit_menu)
+                .item(&window_menu)
+                .build()?;
+
+            #[cfg(not(target_os = "macos"))]
+            let menu = MenuBuilder::new(app)
+                .item(&file_menu)
+                .item(&view_menu)
+                .build()?;
+
+            app.set_menu(menu)?;
+            app.on_menu_event(|app, event| {
+                app.emit("menu-action", event.id().as_ref()).ok();
+            });
+
             Ok(())
         })
         .run(tauri::generate_context!())

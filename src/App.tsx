@@ -1,6 +1,7 @@
-import { useEffect, useState, createContext, useContext } from "react";
+import { useEffect, useRef, useState, createContext, useContext } from "react";
 import type { ReactNode } from "react";
 import { save } from "@tauri-apps/plugin-dialog";
+import { listen } from "@tauri-apps/api/event";
 
 const DepthCtx = createContext(0);
 import { commands } from "./bindings";
@@ -497,21 +498,17 @@ export default function App() {
   const [view, setView] = useState<View>("tree");
 
   async function saveOutput() {
-    const path = await save({
-      defaultPath: "usb-devices.txt",
-      filters: [{ name: "Text", extensions: ["txt"] }],
-    });
+    let path = await save({ defaultPath: "usb-devices.txt" });
     if (!path) return;
+    if (!path.endsWith(".txt")) path += ".txt";
     const text = await commands.formatAsText(devices);
     await commands.writeTextFile(path, text);
   }
 
   async function saveJson() {
-    const path = await save({
-      defaultPath: "usb-devices.json",
-      filters: [{ name: "JSON", extensions: ["json"] }],
-    });
+    let path = await save({ defaultPath: "usb-devices.json" });
     if (!path) return;
+    if (!path.endsWith(".json")) path += ".json";
     await commands.writeTextFile(path, JSON.stringify(devices, null, 2));
   }
 
@@ -533,6 +530,31 @@ export default function App() {
   }
 
   useEffect(() => { refresh(); }, []);
+
+  // Keep stable refs so the menu listener (registered once) always calls
+  // the current versions of these functions without stale closures.
+  const saveOutputRef = useRef(saveOutput);
+  const saveJsonRef = useRef(saveJson);
+  const refreshRef = useRef(refresh);
+  useEffect(() => {
+    saveOutputRef.current = saveOutput;
+    saveJsonRef.current = saveJson;
+    refreshRef.current = refresh;
+  });
+
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    listen<string>("menu-action", (event) => {
+      switch (event.payload) {
+        case "save_text":  saveOutputRef.current(); break;
+        case "save_json":  saveJsonRef.current(); break;
+        case "refresh":    refreshRef.current(); break;
+        case "view_tree":  setView("tree"); break;
+        case "view_split": setView("split"); break;
+      }
+    }).then(f => { unlisten = f; });
+    return () => { unlisten?.(); };
+  }, []);
 
   return (
     <div className="app">
