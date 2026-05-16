@@ -5,6 +5,7 @@ members = [
     "crates/usb-collector-macos",
     "crates/usb-collector-linux",
     "crates/usb-collector-windows",
+    "crates/usb-formatter",
     "crates/hid-parser",
     "crates/usb-cli",
 ]

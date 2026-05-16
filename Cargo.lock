@@ -4352,10 +4352,11 @@ name = "usb-cli"
 version = "0.1.0"
 dependencies = [
  "clap",
- "hid-parser",
  "serde_json",
  "usb-collector-linux",
  "usb-collector-macos",
+ "usb-collector-windows",
+ "usb-formatter",
  "usb-types",
 ]
 
@@ -4391,6 +4392,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "usb-formatter"
+version = "0.1.0"
+dependencies = [
+ "hid-parser",
+ "usb-types",
+]
+
+[[package]]
 name = "usb-probester"
 version = "0.1.0"
 dependencies = [
@@ -4407,6 +4416,7 @@ dependencies = [
  "usb-collector-linux",
  "usb-collector-macos",
  "usb-collector-windows",
+ "usb-formatter",
  "usb-types",
 ]
 

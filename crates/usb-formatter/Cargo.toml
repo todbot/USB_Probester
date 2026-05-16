@@ -1,0 +1,8 @@
+[package]
+name = "usb-formatter"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+usb-types = { path = "../usb-types" }
+hid-parser = { path = "../hid-parser" }

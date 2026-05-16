@@ -16,6 +16,7 @@ tauri-build = { version = "2", features = [] }
 tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
 tauri-plugin-dialog = "2"
+usb-formatter = { path = "../crates/usb-formatter" }
 hid-parser = { path = "../crates/hid-parser" }
 tauri-specta = { version = "=2.0.0-rc.25", features = ["derive", "typescript"] }
 serde = { workspace = true }
