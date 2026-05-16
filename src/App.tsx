@@ -322,17 +322,19 @@ function ClassSpecificNode({ cs, ifaceClass }: { cs: ClassSpecificDescriptor; if
     // CDC (class 2)
     if (ifaceClass === 0x02) {
       const cdcSubtypeNames: Record<number, string> = {
-        0x00: "CDC Header Functional Descriptor",
-        0x01: "CDC Call Management Functional Descriptor",
-        0x02: "CDC Abstract Control Management Functional Descriptor",
-        0x03: "CDC Direct Line Management Functional Descriptor",
-        0x06: "CDC Union Functional Descriptor",
-        0x0F: "CDC MDLM Functional Descriptor",
-        0x10: "CDC MDLM Detail Functional Descriptor",
+        0x00: "Comm Class Header Functional Descriptor",
+        0x01: "Comm Class Call Management Functional Descriptor",
+        0x02: "Comm Class Abstract Control Management Functional Descriptor",
+        0x03: "Comm Class Direct Line Management Functional Descriptor",
+        0x06: "Comm Class Union Functional Descriptor",
+        0x0F: "Comm Class MDLM Functional Descriptor",
+        0x10: "Comm Class MDLM Detail Functional Descriptor",
       };
-      const label = cdcSubtypeNames[sub] ?? `CDC Class-Specific Descriptor (subtype ${hex2(sub)})`;
+      const label = cdcSubtypeNames[sub] ?? `Comm Class-Specific Descriptor (subtype ${hex2(sub)})`;
+      const rawHex = `0000: ${[typ === 0x24 ? data.length + 3 : data.length + 2, typ, sub, ...data].map(b => b.toString(16).padStart(2,"0").toUpperCase()).join(" ")}`;
       return (
         <TreeNode label={label}>
+          <Leaf label="Raw Descriptor (hex)" value={rawHex} />
           {sub === 0x00 && data.length >= 2 && <Leaf label="bcdCDC:" value={hex4(u16le(data, 0))} />}
           {sub === 0x01 && data.length >= 2 && <>
             <Leaf label="bmCapabilities:" value={hex2(data[0])} />
@@ -343,7 +345,6 @@ function ClassSpecificNode({ cs, ifaceClass }: { cs: ClassSpecificDescriptor; if
             <Leaf label="bMasterInterface:" value={`${data[0]}`} />
             {data.slice(1).map((v, i) => <Leaf key={i} label={`bSlaveInterface${i}:`} value={`${v}`} />)}
           </>}
-          {![0x00,0x01,0x02,0x06].includes(sub) && <Leaf label="data:" value={data.map(b => b.toString(16).padStart(2,"0")).join(" ")} />}
         </TreeNode>
       );
     }

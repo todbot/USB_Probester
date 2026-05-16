@@ -164,11 +164,11 @@ fn format_class_specific(iface_class: u8, cs: &usb_types::ClassSpecificDescripto
 
     if typ == 0x24 && iface_class == 0x02 {
         let label = match sub {
-            0x00 => "CDC Header Functional Descriptor",
-            0x01 => "CDC Call Management Functional Descriptor",
-            0x02 => "CDC Abstract Control Management Functional Descriptor",
-            0x06 => "CDC Union Functional Descriptor",
-            _    => "CDC Class-Specific Descriptor",
+            0x00 => "Comm Class Header Functional Descriptor",
+            0x01 => "Comm Class Call Management Functional Descriptor",
+            0x02 => "Comm Class Abstract Control Management Functional Descriptor",
+            0x06 => "Comm Class Union Functional Descriptor",
+            _    => "Comm Class-Specific Descriptor",
         };
         let _ = writeln!(out, "            {}", label);
         match sub {
