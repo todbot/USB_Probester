@@ -1,9 +1,20 @@
-import React, { useEffect, useRef, useState, createContext, useContext } from "react";
+import React, { useEffect, useRef, useState, createContext, useContext, useId } from "react";
 import type { ReactNode } from "react";
 import { save } from "@tauri-apps/plugin-dialog";
 import { listen } from "@tauri-apps/api/event";
 
 const DepthCtx = createContext(0);
+
+type SelectionCtxType = {
+  selectedIds: Set<string>;
+  selectRow: (id: string, extend: boolean) => void;
+  startDrag: (id: string) => void;
+};
+const SelectionCtx = createContext<SelectionCtxType>({
+  selectedIds: new Set(),
+  selectRow: () => {},
+  startDrag: () => {},
+});
 import { commands } from "./bindings";
 import type {
   UsbDevice_Serialize,
@@ -165,14 +176,31 @@ function TreeNode({
 }) {
   const [open, setOpen] = useState(defaultOpen);
   const depth = useContext(DepthCtx);
+  const sel = useContext(SelectionCtx);
+  const id = useId();
   const hasChildren = !!children;
   const labelWidth = Math.max(0, LABEL_BASE - depth * INDENT);
+  const isSelected = sel.selectedIds.has(id);
+  const indent = "    ".repeat(depth);
+  const textLine = `${indent}${label}${value !== undefined ? `   ${value}` : ""}`;
 
   return (
     <div className="tree-node">
       <div
-        className={`tree-row${hasChildren ? " clickable" : ""}`}
-        onClick={hasChildren ? () => setOpen((o) => !o) : undefined}
+        className={`tree-row${hasChildren ? " clickable" : ""}${isSelected ? " selected" : ""}`}
+        data-row-id={id}
+        data-text-line={textLine}
+        onMouseDown={(e) => {
+          if (e.shiftKey) {
+            e.preventDefault();
+            sel.selectRow(id, true);
+          } else {
+            sel.startDrag(id);
+          }
+        }}
+        onClick={(e) => {
+          if (!e.shiftKey && hasChildren) setOpen((o) => !o);
+        }}
       >
         <span className="toggle">{hasChildren ? (open ? "▾" : "▸") : ""}</span>
         <span className="label-area" style={{ flex: `0 0 ${labelWidth}px` }}>
@@ -192,11 +220,29 @@ function TreeNode({
 
 function Leaf({ label, value }: { label: string; value?: string }) {
   const depth = useContext(DepthCtx);
+  const sel = useContext(SelectionCtx);
+  const id = useId();
   const labelWidth = Math.max(0, LABEL_BASE - depth * INDENT);
+  const isSelected = sel.selectedIds.has(id);
+  const indent = "    ".repeat(depth);
+  const textLine = `${indent}${label}${value !== undefined ? `   ${value}` : ""}`;
 
   return (
     <div className="tree-node">
-      <div className="tree-row">
+      <div
+        className={`tree-row${isSelected ? " selected" : ""}`}
+        data-row-id={id}
+        data-text-line={textLine}
+        onMouseDown={(e) => {
+          e.stopPropagation();
+          if (e.shiftKey) {
+            e.preventDefault();
+            sel.selectRow(id, true);
+          } else {
+            sel.startDrag(id);
+          }
+        }}
+      >
         <span className="toggle" />
         <span className="label-area" style={{ flex: `0 0 ${labelWidth}px` }}>
           <span className="lbl">{label}</span>
@@ -695,6 +741,32 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [view, setView] = useState<View>("tree");
   const [autoRefresh, setAutoRefresh] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const anchorIdRef = useRef<string | null>(null);
+  const isDragging = useRef(false);
+
+  function rowRange(aId: string, bId: string): Set<string> {
+    const rows = Array.from(document.querySelectorAll<HTMLElement>(".tree-row[data-row-id]"));
+    const aIdx = rows.findIndex((r) => r.dataset.rowId === aId);
+    const bIdx = rows.findIndex((r) => r.dataset.rowId === bId);
+    const [lo, hi] = [Math.min(aIdx, bIdx), Math.max(aIdx, bIdx)];
+    return new Set(rows.slice(lo, hi + 1).map((r) => r.dataset.rowId!));
+  }
+
+  function startDrag(id: string) {
+    isDragging.current = true;
+    anchorIdRef.current = id;
+    setSelectedIds(new Set([id]));
+  }
+
+  function selectRow(id: string, extend: boolean) {
+    if (!extend || !anchorIdRef.current) {
+      anchorIdRef.current = id;
+      setSelectedIds(new Set([id]));
+    } else {
+      setSelectedIds(rowRange(anchorIdRef.current, id));
+    }
+  }
 
   async function saveOutput() {
     let path = await save({ defaultPath: "usb-devices.txt" });
@@ -763,6 +835,41 @@ export default function App() {
     return () => { unlisten?.(); };
   }, [autoRefresh]);
 
+  useEffect(() => {
+    function onMouseMove(e: MouseEvent) {
+      if (!isDragging.current || !anchorIdRef.current) return;
+      const el = document.elementFromPoint(e.clientX, e.clientY);
+      const row = el?.closest<HTMLElement>(".tree-row[data-row-id]");
+      if (!row) return;
+      const id = row.dataset.rowId!;
+      const anchor = anchorIdRef.current;
+      const rows = Array.from(document.querySelectorAll<HTMLElement>(".tree-row[data-row-id]"));
+      const aIdx = rows.findIndex((r) => r.dataset.rowId === anchor);
+      const bIdx = rows.findIndex((r) => r.dataset.rowId === id);
+      const [lo, hi] = [Math.min(aIdx, bIdx), Math.max(aIdx, bIdx)];
+      setSelectedIds(new Set(rows.slice(lo, hi + 1).map((r) => r.dataset.rowId!)));
+    }
+    function onMouseUp() { isDragging.current = false; }
+    document.addEventListener("mousemove", onMouseMove);
+    document.addEventListener("mouseup", onMouseUp);
+    return () => {
+      document.removeEventListener("mousemove", onMouseMove);
+      document.removeEventListener("mouseup", onMouseUp);
+    };
+  }, []);
+
+  useEffect(() => {
+    function onCopy(e: ClipboardEvent) {
+      const rows = Array.from(document.querySelectorAll<HTMLElement>(".tree-row.selected[data-text-line]"));
+      if (rows.length === 0) return;
+      e.preventDefault();
+      const text = rows.map((r) => r.dataset.textLine ?? "").join("\n");
+      e.clipboardData?.setData("text/plain", text);
+    }
+    document.addEventListener("copy", onCopy);
+    return () => document.removeEventListener("copy", onCopy);
+  }, []);
+
   return (
     <div className="app">
       <header>
@@ -791,20 +898,22 @@ export default function App() {
 
       {error && <div className="error">{error}</div>}
 
-      {view === "tree" ? (
-        <DepthCtx.Provider value={0}>
-          <div className="device-list">
-            {devices.length === 0 && !loading && !error && (
-              <div className="empty">No USB devices found.</div>
-            )}
-            {devices.map((d) => (
-              <DeviceNode key={d.location_id} device={d} />
-            ))}
-          </div>
-        </DepthCtx.Provider>
-      ) : (
-        <SplitView devices={devices} />
-      )}
+      <SelectionCtx.Provider value={{ selectedIds, selectRow, startDrag }}>
+        {view === "tree" ? (
+          <DepthCtx.Provider value={0}>
+            <div className="device-list">
+              {devices.length === 0 && !loading && !error && (
+                <div className="empty">No USB devices found.</div>
+              )}
+              {devices.map((d) => (
+                <DeviceNode key={d.location_id} device={d} />
+              ))}
+            </div>
+          </DepthCtx.Provider>
+        ) : (
+          <SplitView devices={devices} />
+        )}
+      </SelectionCtx.Provider>
     </div>
   );
 }

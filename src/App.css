@@ -134,10 +134,24 @@ button:disabled { opacity: 0.4; cursor: default; }
   padding: 0 6px;
   white-space: nowrap;
   min-height: 1.55em;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
+.device-list, .tab-content {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.tree-row[data-row-id]:hover { background: var(--bg-hover); }
 .tree-row.clickable { cursor: pointer; }
-.tree-row.clickable:hover { background: var(--bg-hover); }
+.tree-row.selected {
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
+  border-radius: 2px;
+}
+.tree-row.selected:hover {
+  background: color-mix(in srgb, var(--accent) 28%, transparent);
+}
 
 .toggle {
   width: 16px;
