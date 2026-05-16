@@ -201,11 +201,14 @@ Configuration / HID tabs for the selected device. Tab is preserved when
 switching devices (unless the new device has no HID and "HID" was active).
 
 UI features:
-- **Refresh** button re-enumerates live devices
-- **Save Output** button — calls `format_as_text` Tauri command (Mac USB Prober-style
-  text, same formatter as the CLI), shows native macOS save dialog, writes `.txt`
-- **Save JSON** button — serialises the already-loaded device list via
-  `JSON.stringify`, shows native save dialog, writes `.json`
+- **Refresh** button + **Auto** toggle — manual re-enumeration or live hotplug via
+  `nusb::watch_devices()` emitting a `usb-changed` Tauri event
+- **Save Output** button (`Cmd+S`) — calls `format_as_text` Tauri command (Mac USB Prober-style
+  text, same formatter as the CLI), shows native save dialog, writes `.txt`
+- **Save JSON** button (`Cmd+Shift+S`) — serialises the loaded device list, writes `.json`
+- **Row selection** — click or click-drag selects rows line-by-line (no character-level
+  text selection); shift+click extends the range; Cmd+C copies selected rows as
+  formatter-matched indented text; double-click or click the ▾/▸ arrow to expand/collapse
 - Dark mode via CSS custom properties; all colors defined in `:root`, overridden
   once in `@media (prefers-color-scheme: dark)`
 - Window: 1000 × 600 px; font: SF Mono 13px weight 500
@@ -218,14 +221,9 @@ UI features:
 Text formatter lives in `src-tauri/src/formatter.rs`; same logic duplicated in
 `crates/usb-cli/src/main.rs` for the standalone CLI.
 
-**Hotplug:** for live updates without polling, the platforms diverge.
-- macOS: `IOServiceAddMatchingNotification` (use the `io-kit-sys` crate).
-- Linux: open a netlink socket on `NETLINK_KOBJECT_UEVENT` or use `libudev`.
-- Windows: `RegisterDeviceNotification` with `DBT_DEVTYP_DEVICEINTERFACE`.
-
-Put each behind a `tokio::sync::mpsc` channel that emits to the Tauri
-webview via `app.emit("usb-changed", ...)`. For v1, polling every 2
-seconds is fine.
+**Hotplug:** implemented via `nusb::watch_devices()` in a background thread that
+emits `app.emit("usb-changed", ())` on every attach/detach event. The frontend
+listens with `listen("usb-changed", ...)` when the Auto toggle is on.
 
 ---
 
@@ -252,8 +250,10 @@ Platform dispatch mirrors `src-tauri/src/lib.rs`.
 4. ~~Tauri wiring + basic frontend.~~ ✓ done
 5. ~~Linux collector via `/sys`.~~ ✓ done
 6. ~~Frontend tree + descriptor panels.~~ ✓ done
-7. Hotplug. ← **next**
+7. ~~Hotplug (nusb `watch_devices` + Tauri `usb-changed` event + auto-refresh toggle).~~ ✓ done
 8. ~~Windows basic enumeration (nusb).~~ ✓ done — hub IOCTLs + HID still TODO
+9. ~~Class-specific descriptors (CS_INTERFACE/HID/IAD, CDC, Audio, MIDI).~~ ✓ done
+10. ~~Row selection — click/drag line-by-line; Cmd+C copies formatter-matched text.~~ ✓ done
 
 The design holds up because the report descriptor bytes are the same
 bytes regardless of how they were obtained, AND the parser is fully

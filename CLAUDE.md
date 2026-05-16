@@ -32,7 +32,8 @@ See `PLAN.md` for the full architecture.
 6. ~~Frontend tree + descriptor panels~~ ✓ done
 7. ~~Hotplug (nusb watch_devices + auto-refresh toggle)~~ ✓ done
 8. ~~Windows basic enumeration (nusb)~~ ✓ done — HID descriptors + full config access via hub IOCTLs still TODO
-9. ~~Class-specific descriptors (CS_INTERFACE/HID/IAD)~~ ✓ done — CDC decoded; Audio/MIDI still generic hex
+9. ~~Class-specific descriptors (CS_INTERFACE/HID/IAD)~~ ✓ done — CDC, Audio, MIDI decoded; generic hex fallback for unknowns
+10. ~~Row selection~~ ✓ done — click/drag selects rows line-by-line; Cmd+C copies formatter-matched text
 
 ## Platform gating
 
@@ -112,7 +113,6 @@ npm run clean
 
 ## Current focus
 
-Steps 7 and 9 done. Remaining work:
-- Audio/MIDI class-specific descriptor decoding (currently shows generic hex)
+All planned steps done. Remaining work:
 - Windows HID descriptors (`HidD_GetReportDescriptor` via `windows-sys`)
 - Windows full config descriptor access for non-WinUSB devices (hub IOCTLs)

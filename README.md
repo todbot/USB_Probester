@@ -122,9 +122,11 @@ cargo build --release -p usb-cli
 
 - **Tree view** — full collapsible descriptor tree matching Mac USB Prober's layout
 - **Split view** — device list on the left, tabbed descriptor panels on the right
+- **Row selection** — click or click-drag to select rows line-by-line; shift+click extends the range; `Cmd+C` copies selected rows as formatted text matching Save Output
 - **Save Output** (`Cmd/Ctrl+S`) — native save dialog; writes Mac USB Prober-style `.txt`
 - **Save JSON** (`Cmd/Ctrl+Shift+S`) — native save dialog; writes pretty-printed `.json`
 - **Refresh** (`Cmd/Ctrl+R`) — re-enumerates all connected devices on demand
+- **Auto-refresh** — toggle to watch for USB attach/detach events and refresh automatically
 - Native menu bar with File, View, Edit, and Window menus
 - Light and dark mode
 
