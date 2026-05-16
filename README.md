@@ -68,6 +68,12 @@ tests/fixtures/           — reference output from original USB Prober.app
 - **Node.js** — v18 or later
 - **Tauri CLI** — installed via npm (see below)
 
+**Linux only:** install GTK/WebKit system libraries (Ubuntu/Debian):
+```bash
+sudo apt install libglib2.0-dev libgtk-3-dev libwebkit2gtk-4.1-dev \
+                 libayatana-appindicator3-dev librsvg2-dev
+```
+
 **Windows only:** install [Visual Studio Build Tools 2022](https://visualstudio.microsoft.com/downloads/#build-tools-for-visual-studio-2022)
 with the **"Desktop development with C++"** workload. Use the MSVC toolchain
 (the default from rustup on Windows) — the MinGW/GNU toolchain does not work

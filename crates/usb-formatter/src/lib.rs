@@ -130,9 +130,82 @@ fn format_interface(d: &UsbDevice, iface: &InterfaceDescriptor, out: &mut String
     }
     let _ = writeln!(out, "            Interface Protocol:   {}", iface.b_interface_protocol);
 
+    for cs in &iface.class_descriptors {
+        format_class_specific(class, cs, out);
+    }
     for ep in &iface.endpoints {
         format_endpoint(ep, out);
     }
+}
+
+// ── Class-specific descriptors ────────────────────────────────────────────────
+
+fn format_class_specific(iface_class: u8, cs: &usb_types::ClassSpecificDescriptor, out: &mut String) {
+    let typ = cs.descriptor_type;
+    let sub = cs.descriptor_subtype;
+    let data = &cs.data;
+
+    if typ == 0x21 {
+        let bcd_hid = if data.len() >= 2 { u16::from_le_bytes([data[0], data[1]]) } else { 0 };
+        let _ = writeln!(out, "            HID Descriptor");
+        let _ = writeln!(out, "                bcdHID:   0x{:04X}", bcd_hid);
+        if data.len() >= 4 {
+            let _ = writeln!(out, "                bCountryCode:   {}", data[2]);
+            let _ = writeln!(out, "                bNumDescriptors:   {}", data[3]);
+        }
+        if data.len() >= 7 {
+            let desc_type_name = match data[4] { 0x22 => "Report", 0x23 => "Physical", _ => "Unknown" };
+            let desc_len = u16::from_le_bytes([data[5], data[6]]);
+            let _ = writeln!(out, "                bDescriptorType:   {}", desc_type_name);
+            let _ = writeln!(out, "                wDescriptorLength:   {}", desc_len);
+        }
+        return;
+    }
+
+    if typ == 0x24 && iface_class == 0x02 {
+        let label = match sub {
+            0x00 => "CDC Header Functional Descriptor",
+            0x01 => "CDC Call Management Functional Descriptor",
+            0x02 => "CDC Abstract Control Management Functional Descriptor",
+            0x06 => "CDC Union Functional Descriptor",
+            _    => "CDC Class-Specific Descriptor",
+        };
+        let _ = writeln!(out, "            {}", label);
+        match sub {
+            0x00 if data.len() >= 2 => {
+                let bcd = u16::from_le_bytes([data[0], data[1]]);
+                let _ = writeln!(out, "                bcdCDC:   0x{:04X}", bcd);
+            }
+            0x01 if data.len() >= 2 => {
+                let _ = writeln!(out, "                bmCapabilities:   0x{:02X}", data[0]);
+                let _ = writeln!(out, "                bDataInterface:   {}", data[1]);
+            }
+            0x02 if !data.is_empty() => {
+                let _ = writeln!(out, "                bmCapabilities:   0x{:02X}", data[0]);
+            }
+            0x06 if data.len() >= 2 => {
+                let _ = writeln!(out, "                bMasterInterface:   {}", data[0]);
+                for (i, &s) in data[1..].iter().enumerate() {
+                    let _ = writeln!(out, "                bSlaveInterface{}:   {}", i, s);
+                }
+            }
+            _ => {
+                let hex: String = data.iter().map(|b| format!("{:02x}", b)).collect::<Vec<_>>().join(" ");
+                let _ = writeln!(out, "                data:   {}", hex);
+            }
+        }
+        return;
+    }
+
+    // Generic fallback
+    let type_label = match typ {
+        0x24 => format!("CS_INTERFACE (subtype 0x{:02X})", sub),
+        0x25 => format!("CS_ENDPOINT (subtype 0x{:02X})", sub),
+        _    => format!("Class-Specific (type 0x{:02X})", typ),
+    };
+    let _ = writeln!(out, "            {}", type_label);
+    let hex: String = data.iter().map(|b| format!("{:02x}", b)).collect::<Vec<_>>().join(" ");
+    let _ = writeln!(out, "                data:   {}", hex);
 }
 
 // ── Endpoint ──────────────────────────────────────────────────────────────────

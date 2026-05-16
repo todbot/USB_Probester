@@ -53,7 +53,8 @@ pub fn parse_config_descriptors(raw: &[u8]) -> Vec<ConfigDescriptor> {
         let end   = (pos + total).min(raw.len());
 
         let raw_bytes = raw[pos..end].to_vec();
-        let interfaces = parse_interface_descriptors(&raw[pos + 9..end]);
+        let class_map = usb_types::extract_class_specific(&raw_bytes);
+        let interfaces = parse_interface_descriptors(&raw[pos + 9..end], &class_map);
 
         configs.push(ConfigDescriptor {
             b_configuration_value: raw[pos + 5],
@@ -70,7 +71,10 @@ pub fn parse_config_descriptors(raw: &[u8]) -> Vec<ConfigDescriptor> {
     configs
 }
 
-fn parse_interface_descriptors(raw: &[u8]) -> Vec<InterfaceDescriptor> {
+fn parse_interface_descriptors(
+    raw: &[u8],
+    class_map: &std::collections::HashMap<(u8, u8), Vec<usb_types::ClassSpecificDescriptor>>,
+) -> Vec<InterfaceDescriptor> {
     let mut interfaces = Vec::new();
     let mut current: Option<InterfaceDescriptor> = None;
     let mut pos = 0;
@@ -88,14 +92,17 @@ fn parse_interface_descriptors(raw: &[u8]) -> Vec<InterfaceDescriptor> {
                 if let Some(iface) = current.take() {
                     interfaces.push(iface);
                 }
+                let iface_num = raw[pos + 2];
+                let alt_set   = raw[pos + 3];
                 current = Some(InterfaceDescriptor {
-                    b_interface_number:    raw[pos + 2],
-                    b_alternate_setting:   raw[pos + 3],
+                    b_interface_number:    iface_num,
+                    b_alternate_setting:   alt_set,
                     b_interface_class:     raw[pos + 5],
                     b_interface_sub_class: raw[pos + 6],
                     b_interface_protocol:  raw[pos + 7],
                     i_interface:           raw[pos + 8],
                     endpoints: Vec::new(),
+                    class_descriptors: class_map.get(&(iface_num, alt_set)).cloned().unwrap_or_default(),
                 });
             }
             TYPE_ENDPOINT if b_len >= 7 => {
@@ -108,7 +115,7 @@ fn parse_interface_descriptors(raw: &[u8]) -> Vec<InterfaceDescriptor> {
                     });
                 }
             }
-            _ => {} // skip HID, class-specific, IAD, etc.
+            _ => {}
         }
 
         pos += b_len;

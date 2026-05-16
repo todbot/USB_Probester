@@ -52,6 +52,19 @@ pub struct InterfaceDescriptor {
     pub b_interface_protocol: u8,
     pub i_interface: u8,
     pub endpoints: Vec<EndpointDescriptor>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub class_descriptors: Vec<ClassSpecificDescriptor>,
+}
+
+/// A class-specific descriptor found between an interface descriptor and its endpoints.
+/// descriptor_type: 0x24 = CS_INTERFACE, 0x25 = CS_ENDPOINT, 0x21 = HID.
+/// descriptor_subtype: first payload byte for 0x24/0x25; 0 for 0x21 (no subtype field).
+/// data: remaining payload bytes after the subtype byte.
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+pub struct ClassSpecificDescriptor {
+    pub descriptor_type: u8,
+    pub descriptor_subtype: u8,
+    pub data: Vec<u8>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
@@ -131,4 +144,50 @@ pub enum UsbSpeed {
     Super,     // 5 Gbit/s
     SuperPlus, // 10 Gbit/s
     Unknown,
+}
+
+/// Parse CS_INTERFACE (0x24), CS_ENDPOINT (0x25), and HID (0x21) descriptors out of
+/// a raw configuration descriptor blob.  Returns a map keyed by (interface_number, alt_setting).
+pub fn extract_class_specific(
+    config_raw: &[u8],
+) -> std::collections::HashMap<(u8, u8), Vec<ClassSpecificDescriptor>> {
+    let mut map: std::collections::HashMap<(u8, u8), Vec<ClassSpecificDescriptor>> =
+        std::collections::HashMap::new();
+    let mut pos = 0;
+    let mut current: Option<(u8, u8)> = None;
+
+    while pos + 2 <= config_raw.len() {
+        let len = config_raw[pos] as usize;
+        if len < 2 || pos + len > config_raw.len() {
+            break;
+        }
+        let chunk = &config_raw[pos..pos + len];
+        match chunk[1] {
+            0x04 if len >= 7 => {
+                current = Some((chunk[2], chunk[3]));
+            }
+            0x24 | 0x25 if len >= 3 => {
+                if let Some(key) = current {
+                    map.entry(key).or_default().push(ClassSpecificDescriptor {
+                        descriptor_type: chunk[1],
+                        descriptor_subtype: chunk[2],
+                        data: chunk[3..].to_vec(),
+                    });
+                }
+            }
+            0x21 if len >= 3 => {
+                // HID descriptor — no subtype byte; store full payload after bDescriptorType.
+                if let Some(key) = current {
+                    map.entry(key).or_default().push(ClassSpecificDescriptor {
+                        descriptor_type: chunk[1],
+                        descriptor_subtype: 0,
+                        data: chunk[2..].to_vec(),
+                    });
+                }
+            }
+            _ => {}
+        }
+        pos += len;
+    }
+    map
 }

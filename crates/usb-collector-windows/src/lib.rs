@@ -110,25 +110,30 @@ fn build_from_open(
         .configurations()
         .map(|cfg| {
             let raw_bytes = cfg.as_bytes().to_vec();
+            let class_map = usb_types::extract_class_specific(&raw_bytes);
             let interfaces = cfg
                 .interfaces()
                 .flat_map(|igroup| {
-                    igroup.alt_settings().map(|iface| InterfaceDescriptor {
-                        b_interface_number: iface.interface_number(),
-                        b_alternate_setting: iface.alternate_setting(),
-                        b_interface_class: iface.class(),
-                        b_interface_sub_class: iface.subclass(),
-                        b_interface_protocol: iface.protocol(),
-                        i_interface: iface.string_index().map(|n| n.get()).unwrap_or(0),
-                        endpoints: iface
-                            .endpoints()
-                            .map(|ep| EndpointDescriptor {
-                                b_endpoint_address: ep.address(),
-                                bm_attributes: ep.attributes(),
-                                w_max_packet_size: ep.max_packet_size_raw(),
-                                b_interval: ep.as_bytes().get(6).copied().unwrap_or(0),
-                            })
-                            .collect(),
+                    igroup.alt_settings().map(|iface| {
+                        let key = (iface.interface_number(), iface.alternate_setting());
+                        InterfaceDescriptor {
+                            b_interface_number: iface.interface_number(),
+                            b_alternate_setting: iface.alternate_setting(),
+                            b_interface_class: iface.class(),
+                            b_interface_sub_class: iface.subclass(),
+                            b_interface_protocol: iface.protocol(),
+                            i_interface: iface.string_index().map(|n| n.get()).unwrap_or(0),
+                            endpoints: iface
+                                .endpoints()
+                                .map(|ep| EndpointDescriptor {
+                                    b_endpoint_address: ep.address(),
+                                    bm_attributes: ep.attributes(),
+                                    w_max_packet_size: ep.max_packet_size_raw(),
+                                    b_interval: ep.as_bytes().get(6).copied().unwrap_or(0),
+                                })
+                                .collect(),
+                            class_descriptors: class_map.get(&key).cloned().unwrap_or_default(),
+                        }
                     })
                     .collect::<Vec<_>>()
                 })

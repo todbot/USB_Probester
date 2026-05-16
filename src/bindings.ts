@@ -10,6 +10,18 @@ export const commands = {
 };
 
 /* Types */
+/**
+ *  A class-specific descriptor found between an interface descriptor and its endpoints.
+ *  descriptor_type: 0x24 = CS_INTERFACE, 0x25 = CS_ENDPOINT, 0x21 = HID.
+ *  descriptor_subtype: first payload byte for 0x24/0x25; 0 for 0x21 (no subtype field).
+ *  data: remaining payload bytes after the subtype byte.
+ */
+export type ClassSpecificDescriptor = {
+	descriptor_type: number,
+	descriptor_subtype: number,
+	data: number[],
+};
+
 export type CollectionKind = "Physical" | "Application" | "Logical" | "Report" | "NamedArray" | "UsageSwitch" | "UsageModifier" | { Vendor: {
 	id: number,
 } };
@@ -21,7 +33,7 @@ export type ConfigDescriptor_Deserialize = {
 	i_configuration: number,
 	bm_attributes: number,
 	b_max_power: number,
-	interfaces: InterfaceDescriptor[],
+	interfaces: InterfaceDescriptor_Deserialize[],
 	raw_bytes?: number[],
 };
 
@@ -30,7 +42,7 @@ export type ConfigDescriptor_Serialize = {
 	i_configuration: number,
 	bm_attributes: number,
 	b_max_power: number,
-	interfaces: InterfaceDescriptor[],
+	interfaces: InterfaceDescriptor_Serialize[],
 	raw_bytes?: number[],
 };
 
@@ -103,7 +115,9 @@ export type HidIoFlags = {
 
 export type HidNode = { type: "UsagePage"; page_id: number; name: string } | { type: "Usage"; usage_id: number; name: string | null } | { type: "Collection"; kind: CollectionKind; children: HidNode[] } | { type: "ReportId"; id: number } | { type: "LogicalMinimum"; value: number } | { type: "LogicalMaximum"; value: number } | { type: "PhysicalMinimum"; value: number } | { type: "PhysicalMaximum"; value: number } | { type: "UnitExponent"; value: number } | { type: "Unit"; value: number } | { type: "ReportSize"; value: number } | { type: "ReportCount"; value: number } | { type: "UsageMinimum"; value: number } | { type: "UsageMaximum"; value: number } | { type: "Input"; flags: HidIoFlags } | { type: "Output"; flags: HidIoFlags } | { type: "Feature"; flags: HidIoFlags };
 
-export type InterfaceDescriptor = {
+export type InterfaceDescriptor = InterfaceDescriptor_Serialize | InterfaceDescriptor_Deserialize;
+
+export type InterfaceDescriptor_Deserialize = {
 	b_interface_number: number,
 	b_alternate_setting: number,
 	b_interface_class: number,
@@ -111,6 +125,18 @@ export type InterfaceDescriptor = {
 	b_interface_protocol: number,
 	i_interface: number,
 	endpoints: EndpointDescriptor[],
+	class_descriptors?: ClassSpecificDescriptor[],
+};
+
+export type InterfaceDescriptor_Serialize = {
+	b_interface_number: number,
+	b_alternate_setting: number,
+	b_interface_class: number,
+	b_interface_sub_class: number,
+	b_interface_protocol: number,
+	i_interface: number,
+	endpoints: EndpointDescriptor[],
+	class_descriptors?: ClassSpecificDescriptor[],
 };
 
 export type StringDescriptor = {

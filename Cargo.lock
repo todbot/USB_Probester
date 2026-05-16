@@ -4403,7 +4403,9 @@ dependencies = [
 name = "usb-probester"
 version = "0.1.0"
 dependencies = [
+ "futures-util",
  "hid-parser",
+ "nusb",
  "serde",
  "serde_json",
  "specta",

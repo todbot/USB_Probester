@@ -118,33 +118,35 @@ fn build_device(
         raw_bytes: ndd.as_bytes().to_vec(),
     };
 
-    // Resolved string descriptors from OS cache.
-    let strings = build_strings(dev_info, &device_descriptor);
-
     // Configuration descriptors — raw bytes + parsed structure.
     let configurations: Vec<ConfigDescriptor> = device
         .configurations()
         .map(|cfg| {
             let raw_bytes = cfg.as_bytes().to_vec();
+            let class_map = usb_types::extract_class_specific(&raw_bytes);
             let interfaces: Vec<InterfaceDescriptor> = cfg
                 .interfaces()
                 .flat_map(|igroup| {
-                    igroup.alt_settings().map(|iface| InterfaceDescriptor {
-                        b_interface_number: iface.interface_number(),
-                        b_alternate_setting: iface.alternate_setting(),
-                        b_interface_class: iface.class(),
-                        b_interface_sub_class: iface.subclass(),
-                        b_interface_protocol: iface.protocol(),
-                        i_interface: iface.string_index().map(|n| n.get()).unwrap_or(0),
-                        endpoints: iface
-                            .endpoints()
-                            .map(|ep| EndpointDescriptor {
-                                b_endpoint_address: ep.address(),
-                                bm_attributes: ep.attributes(),
-                                w_max_packet_size: ep.max_packet_size_raw(),
-                                b_interval: ep.as_bytes().get(6).copied().unwrap_or(0),
-                            })
-                            .collect(),
+                    igroup.alt_settings().map(|iface| {
+                        let key = (iface.interface_number(), iface.alternate_setting());
+                        InterfaceDescriptor {
+                            b_interface_number: iface.interface_number(),
+                            b_alternate_setting: iface.alternate_setting(),
+                            b_interface_class: iface.class(),
+                            b_interface_sub_class: iface.subclass(),
+                            b_interface_protocol: iface.protocol(),
+                            i_interface: iface.string_index().map(|n| n.get()).unwrap_or(0),
+                            endpoints: iface
+                                .endpoints()
+                                .map(|ep| EndpointDescriptor {
+                                    b_endpoint_address: ep.address(),
+                                    bm_attributes: ep.attributes(),
+                                    w_max_packet_size: ep.max_packet_size_raw(),
+                                    b_interval: ep.as_bytes().get(6).copied().unwrap_or(0),
+                                })
+                                .collect(),
+                            class_descriptors: class_map.get(&key).cloned().unwrap_or_default(),
+                        }
                     })
                     .collect::<Vec<_>>()
                 })
@@ -161,6 +163,16 @@ fn build_device(
         })
         .collect();
 
+    // Collect extra string indices (interface/config names) not available from OS cache.
+    let mut extra_indices: Vec<u8> = Vec::new();
+    for cfg in &configurations {
+        if cfg.i_configuration > 0 { extra_indices.push(cfg.i_configuration); }
+        for iface in &cfg.interfaces {
+            if iface.i_interface > 0 { extra_indices.push(iface.i_interface); }
+        }
+    }
+    let strings = build_strings(dev_info, &device, &device_descriptor, &extra_indices);
+
     let location_id = dev_info.location_id();
 
     Ok(UsbDevice {
@@ -176,7 +188,15 @@ fn build_device(
     })
 }
 
-fn build_strings(dev_info: &nusb::DeviceInfo, dd: &DeviceDescriptor) -> Vec<StringDescriptor> {
+fn build_strings(
+    dev_info: &nusb::DeviceInfo,
+    device: &nusb::Device,
+    dd: &DeviceDescriptor,
+    extra_indices: &[u8],
+) -> Vec<StringDescriptor> {
+    use std::num::NonZeroU8;
+    use std::time::Duration;
+
     let mut strings = Vec::new();
     if dd.i_manufacturer > 0 {
         if let Some(s) = dev_info.manufacturer_string() {
@@ -193,6 +213,22 @@ fn build_strings(dev_info: &nusb::DeviceInfo, dd: &DeviceDescriptor) -> Vec<Stri
             strings.push(StringDescriptor { index: dd.i_serial_number, value: s.to_string() });
         }
     }
+
+    // Fetch interface/config name strings via control transfer (English, 0x0409).
+    let known: std::collections::HashSet<u8> = strings.iter().map(|s| s.index).collect();
+    let mut deduped = extra_indices.to_vec();
+    deduped.sort_unstable();
+    deduped.dedup();
+    let timeout = Duration::from_millis(200);
+    for idx in deduped {
+        if known.contains(&idx) { continue; }
+        if let Some(nz) = NonZeroU8::new(idx) {
+            if let Ok(s) = device.get_string_descriptor(nz, 0x0409, timeout).wait() {
+                strings.push(StringDescriptor { index: idx, value: s });
+            }
+        }
+    }
+
     strings
 }
 
