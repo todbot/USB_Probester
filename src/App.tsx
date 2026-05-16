@@ -19,6 +19,7 @@ import "./App.css";
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
+// mirrors speed_label() in crates/usb-formatter/src/lib.rs
 function speedLabel(speed: UsbDevice_Serialize["speed"]): string {
   if (speed === "Low") return "Low Speed";
   if (speed === "Full") return "Full Speed";
@@ -55,6 +56,7 @@ function hexDump(bytes: number[]): string {
   return rows.join("\n");
 }
 
+// mirrors class_label() in crates/usb-formatter/src/lib.rs
 function deviceClassLabel(cls: number): string {
   const labels: Record<number, string> = {
     0: "Composite", 1: "Audio", 2: "Communications", 3: "HID",
@@ -78,6 +80,7 @@ function interfaceClassLabel(cls: number, sub: number): string {
   return deviceClassLabel(cls);
 }
 
+// mirrors subclass_label() in crates/usb-formatter/src/lib.rs
 function interfaceSubclassLabel(cls: number, sub: number): string {
   const map: Record<number, Record<number, string>> = {
     1:  { 1: "Control", 2: "Streaming", 3: "MIDI Streaming" },
@@ -91,6 +94,7 @@ function interfaceSubclassLabel(cls: number, sub: number): string {
   return map[cls]?.[sub] ?? "";
 }
 
+// mirrors xfer_label() in crates/usb-formatter/src/lib.rs
 function endpointType(attr: number): string {
   const t = ["Control", "Isochronous", "Bulk", "Interrupt"];
   return t[attr & 0x03] ?? "Unknown";
@@ -133,6 +137,7 @@ function hidFlagsLabel(flags: HidIoFlags, kind: "input" | "output" | "feature"):
   return `(${parts.join(", ")})`;
 }
 
+// mirrors config_attrs_desc() in crates/usb-formatter/src/lib.rs
 function attrsLabel(attr: number): string {
   const bits: string[] = [];
   if (attr & 0x40) bits.push("self-powered");
