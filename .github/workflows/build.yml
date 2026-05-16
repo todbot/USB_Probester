@@ -258,6 +258,17 @@ jobs:
             --force \
             target/release/usb-probester-cli
 
+      - name: Notarize macOS CLI binary
+        if: runner.os == 'macOS' && inputs.notarize_macos
+        run: |
+          ditto -c -k --keepParent target/release/usb-probester-cli \
+            "$RUNNER_TEMP/usb-probester-cli-notarize.zip"
+          xcrun notarytool submit "$RUNNER_TEMP/usb-probester-cli-notarize.zip" \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID" \
+            --wait
+
       # ── macOS: delete temporary keychain ────────────────────────────────────
       - name: Delete macOS build keychain
         if: >
