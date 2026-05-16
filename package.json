@@ -10,7 +10,7 @@
     "tauri": "tauri",
     "tauridev": "tauri dev",
     "tauribuild": "tauri build",
-    "clean": "rm -rf dist src-tauri/target"
+    "clean": "rm -rf dist target"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",
