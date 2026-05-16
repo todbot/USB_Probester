@@ -198,11 +198,13 @@ function TreeNode({
             sel.startDrag(id);
           }
         }}
-        onClick={(e) => {
-          if (!e.shiftKey && hasChildren) setOpen((o) => !o);
-        }}
+        onDoubleClick={() => { if (hasChildren) setOpen((o) => !o); }}
       >
-        <span className="toggle">{hasChildren ? (open ? "▾" : "▸") : ""}</span>
+        <span
+          className="toggle"
+          onClick={(e) => { e.stopPropagation(); if (hasChildren) setOpen((o) => !o); }}
+          onDoubleClick={(e) => e.stopPropagation()}
+        >{hasChildren ? (open ? "▾" : "▸") : ""}</span>
         <span className="label-area" style={{ flex: `0 0 ${labelWidth}px` }}>
           <span className="lbl">{label}</span>
           {value !== undefined && <span className="dots" aria-hidden="true" />}
@@ -298,9 +300,29 @@ function HidNodeView({ node }: { node: HidNode }) {
 // ── Descriptor nodes ──────────────────────────────────────────────────────────
 
 function HexBlock({ bytes }: { bytes: number[] }) {
+  const id = useId();
+  const sel = useContext(SelectionCtx);
+  const depth = useContext(DepthCtx);
+  const isSelected = sel.selectedIds.has(id);
+  const indent = "    ".repeat(depth);
+  const textLine = hexDump(bytes).split("\n").map((l) => `${indent}${l}`).join("\n");
+
   return (
     <div className="tree-node">
-      <div className="tree-row">
+      <div
+        className={`tree-row${isSelected ? " selected" : ""}`}
+        data-row-id={id}
+        data-text-line={textLine}
+        onMouseDown={(e) => {
+          e.stopPropagation();
+          if (e.shiftKey) {
+            e.preventDefault();
+            sel.selectRow(id, true);
+          } else {
+            sel.startDrag(id);
+          }
+        }}
+      >
         <span className="toggle" />
         <pre className="hex-dump">{hexDump(bytes)}</pre>
       </div>
