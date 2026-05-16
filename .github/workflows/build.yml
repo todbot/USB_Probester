@@ -249,6 +249,15 @@ jobs:
             cargo build --release -p usb-cli
           fi
 
+      - name: Sign macOS CLI binary
+        if: runner.os == 'macOS' && inputs.sign_macos
+        run: |
+          codesign --sign "$APPLE_SIGNING_IDENTITY" \
+            --options runtime \
+            --timestamp \
+            --force \
+            target/release/usb-probester-cli
+
       # ── macOS: delete temporary keychain ────────────────────────────────────
       - name: Delete macOS build keychain
         if: >
@@ -309,7 +318,7 @@ jobs:
           cli_dir="$RUNNER_TEMP/cli"
           mkdir -p "$cli_dir"
           cp "target/release/usb-probester-cli${cli_ext}" \
-             "$cli_dir/${cli_base}${cli_ext}"
+             "$cli_dir/usb-probester-cli${cli_ext}"
           echo "cli_dir=$cli_dir" >> "$GITHUB_OUTPUT"
 
       - name: Upload GUI artifact
