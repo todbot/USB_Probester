@@ -1,0 +1,9 @@
+[package]
+name = "usb-collector-windows"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+usb-types = { path = "../usb-types" }
+hid-parser = { path = "../hid-parser" }
+nusb = "0.2.3"

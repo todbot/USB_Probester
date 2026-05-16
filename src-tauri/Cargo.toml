@@ -29,3 +29,6 @@ usb-collector-macos = { path = "../crates/usb-collector-macos" }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 usb-collector-linux = { path = "../crates/usb-collector-linux" }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+usb-collector-windows = { path = "../crates/usb-collector-windows" }

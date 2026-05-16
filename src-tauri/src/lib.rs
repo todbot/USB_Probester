@@ -4,6 +4,8 @@ mod formatter;
 use usb_collector_macos::MacCollector;
 #[cfg(target_os = "linux")]
 use usb_collector_linux::LinuxCollector;
+#[cfg(target_os = "windows")]
+use usb_collector_windows::WindowsCollector;
 use usb_types::UsbDevice;
 
 use tauri::Emitter;
@@ -16,7 +18,9 @@ fn enumerate_usb() -> Result<Vec<UsbDevice>, String> {
     return MacCollector::new().enumerate().map_err(|e| e.to_string());
     #[cfg(target_os = "linux")]
     return LinuxCollector::new().enumerate().map_err(|e| e.to_string());
-    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+    #[cfg(target_os = "windows")]
+    return WindowsCollector::new().enumerate().map_err(|e| e.to_string());
+    #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
     return Ok(vec![]);
 }
 

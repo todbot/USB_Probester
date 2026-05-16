@@ -4382,6 +4382,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "usb-collector-windows"
+version = "0.1.0"
+dependencies = [
+ "hid-parser",
+ "nusb",
+ "usb-types",
+]
+
+[[package]]
 name = "usb-probester"
 version = "0.1.0"
 dependencies = [
@@ -4397,6 +4406,7 @@ dependencies = [
  "tauri-specta",
  "usb-collector-linux",
  "usb-collector-macos",
+ "usb-collector-windows",
  "usb-types",
 ]
 
