@@ -140,7 +140,7 @@ fn format_interface(d: &UsbDevice, iface: &InterfaceDescriptor, out: &mut String
     let _ = writeln!(out, "            Interface Protocol:   {}", iface.b_interface_protocol);
 
     for cs in &iface.class_descriptors {
-        format_class_specific(class, cs, out);
+        format_class_specific(class, sub, cs, out);
     }
     for ep in &iface.endpoints {
         format_endpoint(ep, out);
@@ -149,10 +149,12 @@ fn format_interface(d: &UsbDevice, iface: &InterfaceDescriptor, out: &mut String
 
 // ── Class-specific descriptors ────────────────────────────────────────────────
 
-fn format_class_specific(iface_class: u8, cs: &usb_types::ClassSpecificDescriptor, out: &mut String) {
+fn format_class_specific(iface_class: u8, iface_sub_class: u8, cs: &usb_types::ClassSpecificDescriptor, out: &mut String) {
     let typ = cs.descriptor_type;
     let sub = cs.descriptor_subtype;
     let data = &cs.data;
+    let hex_data = |d: &[u8]| d.iter().map(|b| format!("{:02X}", b)).collect::<Vec<_>>().join(" ");
+    let jack_type = |t: u8| match t { 0x01 => "Embedded", 0x02 => "External", _ => "Unknown" };
 
     if typ == 0x21 {
         let bcd_hid = if data.len() >= 2 { u16::from_le_bytes([data[0], data[1]]) } else { 0 };
@@ -198,10 +200,65 @@ fn format_class_specific(iface_class: u8, cs: &usb_types::ClassSpecificDescripto
                     let _ = writeln!(out, "                bSlaveInterface{}:   {}", i, s);
                 }
             }
-            _ => {
-                let hex: String = data.iter().map(|b| format!("{:02x}", b)).collect::<Vec<_>>().join(" ");
-                let _ = writeln!(out, "                data:   {}", hex);
+            _ => { let _ = writeln!(out, "                data:   {}", hex_data(data)); }
+        }
+        return;
+    }
+
+    if typ == 0x24 && iface_class == 0x01 {
+        match (iface_sub_class, sub) {
+            (1, 0x01) if data.len() >= 4 => {
+                let bcd = u16::from_le_bytes([data[0], data[1]]);
+                let total = u16::from_le_bytes([data[2], data[3]]);
+                let n = data.get(4).copied().unwrap_or(0) as usize;
+                let _ = writeln!(out, "            Audio Control Interface Header Descriptor");
+                let _ = writeln!(out, "                bcdADC:   0x{:04X}", bcd);
+                let _ = writeln!(out, "                wTotalLength:   {}", total);
+                let _ = writeln!(out, "                bInCollection:   {}", n);
+                for (i, &v) in data[5..].iter().take(n).enumerate() {
+                    let _ = writeln!(out, "                baInterfaceNr[{}]:   {}", i, v);
+                }
             }
+            (3, 0x01) if data.len() >= 4 => {
+                let bcd = u16::from_le_bytes([data[0], data[1]]);
+                let total = u16::from_le_bytes([data[2], data[3]]);
+                let _ = writeln!(out, "            MIDI Streaming Interface Header Descriptor");
+                let _ = writeln!(out, "                bcdMSC:   0x{:04X}", bcd);
+                let _ = writeln!(out, "                wTotalLength:   {}", total);
+            }
+            (3, 0x02) if data.len() >= 3 => {
+                let _ = writeln!(out, "            MIDI IN Jack Descriptor");
+                let _ = writeln!(out, "                bJackType:   {} (0x{:02X})", jack_type(data[0]), data[0]);
+                let _ = writeln!(out, "                bJackID:   {}", data[1]);
+                let _ = writeln!(out, "                iJack:   {}", data[2]);
+            }
+            (3, 0x03) if data.len() >= 3 => {
+                let n_pins = data[2] as usize;
+                let i_jack = data.get(3 + n_pins * 2).copied().unwrap_or(0);
+                let _ = writeln!(out, "            MIDI OUT Jack Descriptor");
+                let _ = writeln!(out, "                bJackType:   {} (0x{:02X})", jack_type(data[0]), data[0]);
+                let _ = writeln!(out, "                bJackID:   {}", data[1]);
+                let _ = writeln!(out, "                bNrInputPins:   {}", n_pins);
+                for i in 0..n_pins {
+                    let _ = writeln!(out, "                baSourceID[{}]:   {}", i, data.get(3 + i * 2).copied().unwrap_or(0));
+                    let _ = writeln!(out, "                baSourcePin[{}]:   {}", i, data.get(4 + i * 2).copied().unwrap_or(0));
+                }
+                let _ = writeln!(out, "                iJack:   {}", i_jack);
+            }
+            _ => {
+                let _ = writeln!(out, "            Audio Class-Specific Descriptor (subtype 0x{:02X})", sub);
+                let _ = writeln!(out, "                data:   {}", hex_data(data));
+            }
+        }
+        return;
+    }
+
+    if typ == 0x25 && iface_class == 0x01 && iface_sub_class == 0x03 && sub == 0x01 && !data.is_empty() {
+        let n = data[0] as usize;
+        let _ = writeln!(out, "            MIDI Streaming Data Endpoint Descriptor");
+        let _ = writeln!(out, "                bNumEmbMIDIJack:   {}", n);
+        for (i, &j) in data[1..].iter().take(n).enumerate() {
+            let _ = writeln!(out, "                baAssocJackID[{}]:   {}", i, j);
         }
         return;
     }
@@ -213,8 +270,7 @@ fn format_class_specific(iface_class: u8, cs: &usb_types::ClassSpecificDescripto
         _    => format!("Class-Specific (type 0x{:02X})", typ),
     };
     let _ = writeln!(out, "            {}", type_label);
-    let hex: String = data.iter().map(|b| format!("{:02x}", b)).collect::<Vec<_>>().join(" ");
-    let _ = writeln!(out, "                data:   {}", hex);
+    let _ = writeln!(out, "                data:   {}", hex_data(data));
 }
 
 // ── Endpoint ──────────────────────────────────────────────────────────────────

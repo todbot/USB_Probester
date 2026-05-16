@@ -298,7 +298,7 @@ function u16le(data: number[], off: number) {
   return data[off] | (data[off + 1] << 8);
 }
 
-function ClassSpecificNode({ cs, ifaceClass }: { cs: ClassSpecificDescriptor; ifaceClass: number }) {
+function ClassSpecificNode({ cs, ifaceClass, ifaceSubClass }: { cs: ClassSpecificDescriptor; ifaceClass: number; ifaceSubClass: number }) {
   const { descriptor_type: typ, descriptor_subtype: sub, data } = cs;
 
   // HID class descriptor (0x21)
@@ -350,16 +350,84 @@ function ClassSpecificNode({ cs, ifaceClass }: { cs: ClassSpecificDescriptor; if
       );
     }
 
-    // Audio (class 1) — show generic for now
+    // Audio class (class 1)
     if (ifaceClass === 0x01) {
+      const jackType = (t: number) => t === 0x01 ? "Embedded" : t === 0x02 ? "External" : hex2(t);
+      const rawHex = (d: number[]) => d.map(b => b.toString(16).padStart(2,"0").toUpperCase()).join(" ");
+
+      // AudioControl (subclass 1)
+      if (ifaceSubClass === 0x01 && sub === 0x01 && data.length >= 4) {
+        const bcdADC = u16le(data, 0);
+        const wTotalLength = u16le(data, 2);
+        const bInCollection = data[4] ?? 0;
+        const ifaces = data.slice(5, 5 + bInCollection);
+        return (
+          <TreeNode label="Audio Control Interface Header Descriptor">
+            <Leaf label="bcdADC:" value={hex4(bcdADC)} />
+            <Leaf label="wTotalLength:" value={`${wTotalLength}`} />
+            <Leaf label="bInCollection:" value={`${bInCollection}`} />
+            {Array.from(ifaces).map((v, i) => <Leaf key={i} label={`baInterfaceNr[${i}]:`} value={`${v}`} />)}
+          </TreeNode>
+        );
+      }
+
+      // MIDIStreaming (subclass 3)
+      if (ifaceSubClass === 0x03) {
+        if (sub === 0x01 && data.length >= 4) {
+          const bcdMSC = u16le(data, 0);
+          const wTotalLength = u16le(data, 2);
+          return (
+            <TreeNode label="MIDI Streaming Interface Header Descriptor">
+              <Leaf label="bcdMSC:" value={hex4(bcdMSC)} />
+              <Leaf label="wTotalLength:" value={`${wTotalLength}`} />
+            </TreeNode>
+          );
+        }
+        if (sub === 0x02 && data.length >= 3) {
+          return (
+            <TreeNode label="MIDI IN Jack Descriptor">
+              <Leaf label="bJackType:" value={`${jackType(data[0])} (${hex2(data[0])})`} />
+              <Leaf label="bJackID:" value={`${data[1]}`} />
+              <Leaf label="iJack:" value={`${data[2]}`} />
+            </TreeNode>
+          );
+        }
+        if (sub === 0x03 && data.length >= 3) {
+          const nPins = data[2];
+          const srcPairs = Array.from({length: nPins}, (_, i) => ({
+            id: data[3 + i * 2], pin: data[4 + i * 2]
+          }));
+          const iJack = data[3 + nPins * 2] ?? 0;
+          return (
+            <TreeNode label="MIDI OUT Jack Descriptor">
+              <Leaf label="bJackType:" value={`${jackType(data[0])} (${hex2(data[0])})`} />
+              <Leaf label="bJackID:" value={`${data[1]}`} />
+              <Leaf label="bNrInputPins:" value={`${nPins}`} />
+              {srcPairs.map((s, i) => <>
+                <Leaf key={`id${i}`} label={`baSourceID[${i}]:`} value={`${s.id}`} />
+                <Leaf key={`pin${i}`} label={`baSourcePin[${i}]:`} value={`${s.pin}`} />
+              </>)}
+              <Leaf label="iJack:" value={`${iJack}`} />
+            </TreeNode>
+          );
+        }
+      }
+
+      // Generic audio fallback
+      const audioSubtypes: Record<number, Record<number, string>> = {
+        1: { 0x01:"AC_HEADER", 0x02:"INPUT_TERMINAL", 0x03:"OUTPUT_TERMINAL", 0x04:"MIXER_UNIT", 0x06:"FEATURE_UNIT" },
+        2: { 0x01:"AS_GENERAL", 0x02:"FORMAT_TYPE" },
+        3: { 0x01:"MS_HEADER", 0x02:"MIDI_IN_JACK", 0x03:"MIDI_OUT_JACK" },
+      };
+      const subName = audioSubtypes[ifaceSubClass]?.[sub] ?? hex2(sub);
       return (
-        <TreeNode label={`Audio Class-Specific Descriptor (subtype ${hex2(sub)})`}>
-          <Leaf label="data:" value={data.map(b => b.toString(16).padStart(2,"0")).join(" ")} />
+        <TreeNode label={`Audio Class-Specific Descriptor (${subName})`}>
+          <Leaf label="data:" value={rawHex(data)} />
         </TreeNode>
       );
     }
 
-    // Generic fallback
+    // Generic CS_INTERFACE fallback
     return (
       <TreeNode label={`Class-Specific Interface Descriptor (subtype ${hex2(sub)})`}>
         <Leaf label="data:" value={data.map(b => b.toString(16).padStart(2,"0")).join(" ")} />
@@ -369,6 +437,17 @@ function ClassSpecificNode({ cs, ifaceClass }: { cs: ClassSpecificDescriptor; if
 
   // CS_ENDPOINT (0x25)
   if (typ === 0x25) {
+    // MIDI Streaming MS_GENERAL (subclass 3, subtype 1)
+    if (ifaceSubClass === 0x03 && sub === 0x01 && data.length >= 1) {
+      const n = data[0];
+      const jacks = data.slice(1, 1 + n);
+      return (
+        <TreeNode label="MIDI Streaming Data Endpoint Descriptor">
+          <Leaf label="bNumEmbMIDIJack:" value={`${n}`} />
+          {Array.from(jacks).map((j, i) => <Leaf key={i} label={`baAssocJackID[${i}]:`} value={`${j}`} />)}
+        </TreeNode>
+      );
+    }
     return (
       <TreeNode label={`Class-Specific Endpoint Descriptor (subtype ${hex2(sub)})`}>
         <Leaf label="data:" value={data.map(b => b.toString(16).padStart(2,"0")).join(" ")} />
@@ -404,7 +483,7 @@ function InterfaceNode({
       })()} />
       <Leaf label="Interface Protocol:" value={`${iface.b_interface_protocol}`} />
       {(iface.class_descriptors ?? []).map((cs, i) => (
-        <ClassSpecificNode key={i} cs={cs} ifaceClass={iface.b_interface_class} />
+        <ClassSpecificNode key={i} cs={cs} ifaceClass={iface.b_interface_class} ifaceSubClass={iface.b_interface_sub_class} />
       ))}
       {hid && <HidDescriptorNode hid={hid} />}
       {iface.endpoints.map((ep, i) => (
