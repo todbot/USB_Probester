@@ -10,6 +10,8 @@ use usb_types::UsbDevice;
 
 use tauri::Emitter;
 use tauri::menu::{MenuBuilder, MenuItem, SubmenuBuilder};
+#[cfg(not(target_os = "macos"))]
+use tauri::menu::PredefinedMenuItem;
 
 #[tauri::command]
 #[specta::specta]
@@ -61,32 +63,46 @@ pub fn run() {
 
             let save_text = MenuItem::with_id(app, "save_text", "Save Output…", true, Some("CmdOrCtrl+S"))?;
             let save_json = MenuItem::with_id(app, "save_json", "Save JSON…", true, Some("CmdOrCtrl+Shift+S"))?;
-            let file_menu = SubmenuBuilder::new(app, "File")
-                .item(&save_text)
-                .item(&save_json)
-                .build()?;
-
             let refresh = MenuItem::with_id(app, "refresh", "Refresh", true, Some("CmdOrCtrl+R"))?;
             let view_tree = MenuItem::with_id(app, "view_tree", "Tree View", true, None::<&str>)?;
             let view_split = MenuItem::with_id(app, "view_split", "Split View", true, None::<&str>)?;
+            let theme_light = MenuItem::with_id(app, "theme_light", "Light", true, None::<&str>)?;
+            let theme_dark = MenuItem::with_id(app, "theme_dark", "Dark", true, None::<&str>)?;
+            let theme_system = MenuItem::with_id(app, "theme_system", "System", true, None::<&str>)?;
+            let appearance_menu = SubmenuBuilder::new(app, "Appearance")
+                .item(&theme_light)
+                .item(&theme_dark)
+                .item(&theme_system)
+                .build()?;
             let view_menu = SubmenuBuilder::new(app, "View")
                 .item(&refresh)
                 .separator()
                 .item(&view_tree)
                 .item(&view_split)
+                .separator()
+                .item(&appearance_menu)
                 .build()?;
 
             #[cfg(target_os = "macos")]
-            let app_submenu = SubmenuBuilder::new(app, "USB Probester")
-                .about(None)
-                .separator()
-                .services()
-                .separator()
-                .hide()
-                .hide_others()
-                .show_all()
-                .separator()
-                .quit()
+            let app_submenu = {
+                let about = MenuItem::with_id(app, "about", "About USB Probester…", true, None::<&str>)?;
+                SubmenuBuilder::new(app, "USB Probester")
+                    .item(&about)
+                    .separator()
+                    .services()
+                    .separator()
+                    .hide()
+                    .hide_others()
+                    .show_all()
+                    .separator()
+                    .quit()
+                    .build()?
+            };
+
+            #[cfg(target_os = "macos")]
+            let file_menu = SubmenuBuilder::new(app, "File")
+                .item(&save_text)
+                .item(&save_json)
                 .build()?;
 
             #[cfg(target_os = "macos")]
@@ -117,10 +133,24 @@ pub fn run() {
                 .build()?;
 
             #[cfg(not(target_os = "macos"))]
-            let menu = MenuBuilder::new(app)
-                .item(&file_menu)
-                .item(&view_menu)
-                .build()?;
+            let menu = {
+                let quit = PredefinedMenuItem::quit(app, Some("Quit"))?;
+                let file_menu = SubmenuBuilder::new(app, "File")
+                    .item(&save_text)
+                    .item(&save_json)
+                    .separator()
+                    .item(&quit)
+                    .build()?;
+                let about = MenuItem::with_id(app, "about", "About USB Probester…", true, None::<&str>)?;
+                let help_menu = SubmenuBuilder::new(app, "Help")
+                    .item(&about)
+                    .build()?;
+                MenuBuilder::new(app)
+                    .item(&file_menu)
+                    .item(&view_menu)
+                    .item(&help_menu)
+                    .build()?
+            };
 
             app.set_menu(menu)?;
             app.on_menu_event(|app, event| {

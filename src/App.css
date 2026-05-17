@@ -36,6 +36,40 @@
   }
 }
 
+html[data-theme="dark"] {
+  --bg:           #1e1e1e;
+  --bg-surface:   #2c2c2c;
+  --bg-hover:     #2e2e2e;
+  --bg-selected:  #2a5bbf;
+  --border:       #3a3a3a;
+  --text:         #e8e8e8;
+  --text-dim:     #aaa;
+  --text-muted:   #666;
+  --text-val:     #d0d0d0;
+  --text-toggle:  #999;
+  --dots:         #4a4a4a;
+  --hex:          #888;
+  --accent:       #4d84f0;
+  --accent-dark:  #3a70db;
+}
+
+html[data-theme="light"] {
+  --bg:           #ffffff;
+  --bg-surface:   #ffffff;
+  --bg-hover:     #dde5f0;
+  --bg-selected:  #2f6fd0;
+  --border:       #c8c8c8;
+  --text:         #000000;
+  --text-dim:     #555;
+  --text-muted:   #999;
+  --text-val:     #022;
+  --text-toggle:  #444;
+  --dots:         #bbb;
+  --hex:          #555;
+  --accent:       #396cd8;
+  --accent-dark:  #2a55bb;
+}
+
 /* ── Base ─────────────────────────────────────────────────────────────────── */
 
 :root {
@@ -329,4 +363,71 @@ button:disabled { opacity: 0.4; cursor: default; }
   justify-content: center;
   color: var(--text-muted);
   font-size: 13px;
+}
+
+/* ── About modal ──────────────────────────────────────────────────────────── */
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+}
+
+.modal-box {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 24px 28px;
+  min-width: 280px;
+  max-width: 380px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+}
+
+.modal-icon {
+  width: 64px;
+  height: 64px;
+  align-self: center;
+}
+
+.modal-box h2 {
+  font-size: 1.1em;
+  font-weight: 700;
+  color: var(--text);
+  margin: 0;
+}
+
+.modal-version {
+  color: var(--text-dim);
+  font-size: 11px;
+  margin: 0;
+}
+
+.modal-box p {
+  color: var(--text);
+  line-height: 1.5;
+  margin: 0;
+}
+
+.modal-link {
+  background: none;
+  border: none;
+  color: var(--accent);
+  cursor: pointer;
+  padding: 0;
+  font-family: inherit;
+  font-size: inherit;
+  text-decoration: underline;
+}
+.modal-link:hover { color: var(--accent-dark); border: none; }
+
+.modal-close {
+  align-self: flex-end;
+  margin-top: 4px;
 }

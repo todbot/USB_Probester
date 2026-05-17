@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState, createContext, useContext, useId } from "react";
 import type { ReactNode } from "react";
 import { save } from "@tauri-apps/plugin-dialog";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { listen } from "@tauri-apps/api/event";
 
 const DepthCtx = createContext(0);
@@ -15,6 +16,7 @@ const SelectionCtx = createContext<SelectionCtxType>({
   selectRow: () => {},
   startDrag: () => {},
 });
+import appIcon from "../src-tauri/icons/128x128.png";
 import { commands } from "./bindings";
 import type {
   UsbDevice_Serialize,
@@ -763,6 +765,7 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [view, setView] = useState<View>("tree");
   const [autoRefresh, setAutoRefresh] = useState(true);
+  const [showAbout, setShowAbout] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const anchorIdRef = useRef<string | null>(null);
   const isDragging = useRef(false);
@@ -842,8 +845,12 @@ export default function App() {
         case "save_text":  saveOutputRef.current(); break;
         case "save_json":  saveJsonRef.current(); break;
         case "refresh":    refreshRef.current(); break;
-        case "view_tree":  setView("tree"); break;
-        case "view_split": setView("split"); break;
+        case "view_tree":    setView("tree"); break;
+        case "view_split":   setView("split"); break;
+        case "about":        setShowAbout(true); break;
+        case "theme_light":  document.documentElement.dataset.theme = "light"; break;
+        case "theme_dark":   document.documentElement.dataset.theme = "dark"; break;
+        case "theme_system": delete document.documentElement.dataset.theme; break;
       }
     }).then(f => { unlisten = f; });
     return () => { unlisten?.(); };
@@ -936,6 +943,23 @@ export default function App() {
           <SplitView devices={devices} />
         )}
       </SelectionCtx.Provider>
+
+      {showAbout && (
+        <div className="modal-overlay" onClick={() => setShowAbout(false)}>
+          <div className="modal-box" onClick={(e) => e.stopPropagation()}>
+            <img src={appIcon} className="modal-icon" alt="USB Probester icon" />
+            <h2>USB Probester</h2>
+            <p className="modal-version">v0.1.0</p>
+            <p>A cross-platform USB device inspector.<br />Spiritual successor to Apple's USB&nbsp;Prober.app.</p>
+            <p>
+              <button className="modal-link" onClick={() => openUrl("https://github.com/todbot/USB_Probester")}>
+                github.com/todbot/USB_Probester
+              </button>
+            </p>
+            <button className="modal-close" onClick={() => setShowAbout(false)}>Close</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
