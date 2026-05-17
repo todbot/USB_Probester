@@ -1,3 +1,12 @@
+//! Mac USB Prober-style text formatter.
+//!
+//! Renders a slice of [`UsbDevice`] values as a human-readable text tree,
+//! matching the output format of Apple's original USB Prober.app. The single
+//! public entry point is [`format_devices`].
+//!
+//! This crate is shared by the Tauri app's "Save Output" command and the
+//! standalone `usb-probester-cli` binary so both produce identical output.
+
 use std::fmt::Write;
 use hid_parser::render_text;
 use usb_types::{self, usb_class, *};

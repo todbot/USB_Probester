@@ -1,3 +1,22 @@
+//! USB device collector for Linux.
+//!
+//! Enumerates all connected USB devices and returns their full descriptor trees
+//! entirely from sysfs — no device open and no elevated privileges required:
+//!
+//! - **[`nusb`]** — provides device metadata: bus number, port chain, cached
+//!   string descriptors (manufacturer, product, serial), and speed.
+//!
+//! - **`/sys/bus/usb/devices/<dev>/descriptors`** — world-readable binary file
+//!   containing the raw Device Descriptor followed by the full Configuration
+//!   Descriptor blob, parsed by the internal `descriptor` module.
+//!
+//! - **HID report descriptors** — located at
+//!   `/sys/bus/usb/devices/<dev>/<dev>:<cfg>.<iface>/0003:<VID>:<PID>.<N>/report_descriptor`,
+//!   collected by the internal `hid` module.
+//!
+//! The public API is [`LinuxCollector::enumerate`], which returns a
+//! `Vec<`[`UsbDevice`]`>` or a [`CollectorError`].
+
 #![cfg(target_os = "linux")]
 
 mod descriptor;

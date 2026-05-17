@@ -1,3 +1,17 @@
+//! Shared data model for USB device information.
+//!
+//! Defines the core types used across all crates in the workspace:
+//! [`UsbDevice`], [`DeviceDescriptor`], [`ConfigDescriptor`],
+//! [`InterfaceDescriptor`], [`EndpointDescriptor`], and the HID node tree.
+//!
+//! All types derive `serde::{Serialize, Deserialize}` for JSON I/O and
+//! `specta::Type` for automatic TypeScript type generation in the Tauri frontend.
+//!
+//! Also provides [`usb_class`] — named constants for well-known USB class codes —
+//! and helper functions [`extract_class_specific`] and [`extract_iads`] for
+//! parsing class-specific and Interface Association Descriptors out of raw
+//! configuration descriptor bytes.
+
 use serde::{Deserialize, Serialize};
 use specta::Type;
 

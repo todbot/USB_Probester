@@ -1,3 +1,19 @@
+//! HID report descriptor parser.
+//!
+//! Parses the raw byte stream of a USB HID report descriptor into a structured
+//! tree of [`HidNode`] values (usage pages, collections, logical ranges, report
+//! fields, etc.) following the HID Class Specification 1.11 item encoding.
+//!
+//! # Usage
+//! ```ignore
+//! let nodes = hid_parser::parse(&raw_bytes)?;
+//! let text  = hid_parser::render_text(&nodes, 26); // USB Prober-style indented text
+//! ```
+//!
+//! [`render_text`] produces output that matches the "Parsed Report Descriptor"
+//! section of Apple's original USB Prober.app, used as the reference fixture
+//! for correctness testing.
+
 use usb_types::{CollectionKind, HidIoFlags, HidNode};
 
 // ── Public API ─────────────────────────────────────────────────────────────────

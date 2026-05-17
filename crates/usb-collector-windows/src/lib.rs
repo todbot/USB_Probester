@@ -1,3 +1,23 @@
+//! USB device collector for Windows.
+//!
+//! Enumerates connected USB devices via [`nusb`] and attempts to retrieve full
+//! descriptor information for each:
+//!
+//! - Devices using the **WinUSB** driver can be opened directly; full Device and
+//!   Configuration descriptor bytes are read and parsed.
+//!
+//! - Devices using Windows class drivers (**HID.sys**, **usbstor**, **CDC**,
+//!   etc.) cannot be opened via nusb. These are returned with VID/PID, speed,
+//!   and string descriptors only — interface and endpoint descriptors are absent.
+//!
+//! Known gaps (planned):
+//! - Full descriptor access for class-driver devices requires
+//!   `IOCTL_USB_GET_DESCRIPTOR_FROM_NODE_CONNECTION` via hub handles.
+//! - HID report descriptors require `HidD_GetReportDescriptor` via `windows-sys`.
+//!
+//! The public API is [`WindowsCollector::enumerate`], which returns a
+//! `Vec<`[`UsbDevice`]`>` or a [`CollectorError`].
+
 #![cfg(target_os = "windows")]
 
 use nusb::MaybeFuture;

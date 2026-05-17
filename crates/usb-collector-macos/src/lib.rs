@@ -1,3 +1,20 @@
+//! USB device collector for macOS.
+//!
+//! Enumerates all connected USB devices and returns their full descriptor trees
+//! using two complementary data sources:
+//!
+//! - **[`nusb`]** — wraps IOKit directly to enumerate devices and retrieve raw
+//!   Device and Configuration descriptor bytes via `GET_DESCRIPTOR`. This gives
+//!   us the complete descriptor hierarchy including endpoints and class-specific
+//!   descriptors.
+//!
+//! - **`ioreg -a -c IOHIDInterface`** — HID report descriptor bytes live on
+//!   `IOHIDInterface` nodes, not on the USB device node. A separate ioreg pass
+//!   extracts them and correlates them to the nusb device via `LocationID`.
+//!
+//! The public API is [`MacCollector::enumerate`], which returns a
+//! `Vec<`[`UsbDevice`]`>` or a [`CollectorError`].
+
 #![cfg(target_os = "macos")]
 
 use std::collections::HashMap;
