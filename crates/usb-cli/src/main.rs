@@ -51,3 +51,4 @@ fn enumerate() -> Vec<UsbDevice> {
         vec![]
     }
 }
+

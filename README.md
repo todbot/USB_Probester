@@ -9,6 +9,27 @@ Built with [Tauri v2](https://tauri.app) (Rust backend, React/TypeScript fronten
 
 Also ships a standalone CLI (`usb-probester-cli`) for text or JSON output.
 
+--- 
+
+## What does this do? 
+
+USB Probester displays deep information about USB devices, coming from the 
+devices themselves in the form of a variety of data packets called "descriptors".
+
+The USB descriptors that this app parses and displays include:
+
+- **Device Descriptor** -- device type, vender ID, product ID, Manufactor strings, serial number
+- **Config Descriptor** -- Power required, how many interfaces and what type (CDC, MSC, Audio, etc.)
+- **HID Report Descriptor** -- If a Human Interface Device lie a mouse, keyboard or similar,
+  the types and format of HID data packets ("reports") sent to and from the device
+ 
+The app displays this information in a tree-like structure, but not a a tree
+of connections but of configuration. Much of a USB device's configuration
+is hierarchical.  or example, a kebyoard has a configuration descriptor, 
+which has one or more interfaces. One of those interfaces is a HID interface, 
+which contains a HID report descriptor with one or more reports defined. 
+This app does not show bus topology but configuration hierarchy.
+
 ---
 
 ## Why does this exist?
@@ -31,6 +52,20 @@ output format and correctness.
 
 ---
 
+## GUI features
+
+- **Tree view** — full collapsible descriptor tree matching Mac USB Prober's layout
+- **Split view** — device list on the left, tabbed descriptor panels on the right
+- **Row selection** — click or click-drag to select rows line-by-line; shift+click extends the range; `Cmd+C` copies selected rows as formatted text matching Save Output
+- **Save Output** (`Cmd/Ctrl+S`) — native save dialog; writes Mac USB Prober-style `.txt`
+- **Save JSON** (`Cmd/Ctrl+Shift+S`) — native save dialog; writes pretty-printed `.json`
+- **Refresh** (`Cmd/Ctrl+R`) — re-enumerates all connected devices on demand
+- **Auto-refresh** — toggle to watch for USB attach/detach events and refresh automatically
+- Native menu bar with File, View, Edit, and Window menus
+- Light and dark mode
+
+---
+
 ## Status
 
 | Platform | Collector        | HID Parser | GUI        | CLI        |
@@ -43,45 +78,13 @@ output format and correctness.
 class drivers show VID/PID, speed, and strings only. HID report descriptors not yet
 implemented. Full descriptor support requires hub IOCTLs (planned).
 
----
-
-## Workspace layout
-
-```
-crates/
-  usb-types/              — shared Rust data model (serde + specta types)
-  usb-collector-macos/    — macOS USB enumeration via nusb + ioreg HID pass
-  usb-collector-linux/    — Linux USB enumeration via nusb + sysfs parsing
-  usb-collector-windows/  — Windows USB enumeration via nusb (partial)
-  hid-parser/             — platform-agnostic HID report descriptor parser
-  usb-cli/                — standalone CLI binary (usb-probester-cli)
-src-tauri/                — Tauri shell, backend commands, text formatter
-src/                      — React/TypeScript frontend
-tests/fixtures/           — reference output from original USB Prober.app
-```
-
----
-
-## Prerequisites
-
-- **Rust** — [rustup.rs](https://rustup.rs)
-- **Node.js** — v18 or later
-- **Tauri CLI** — installed via npm (see below)
-
-**Linux only:** install GTK/WebKit system libraries (Ubuntu/Debian):
-```bash
-sudo apt install libglib2.0-dev libgtk-3-dev libwebkit2gtk-4.1-dev \
-                 libayatana-appindicator3-dev librsvg2-dev
-```
-
-**Windows only:** install [Visual Studio Build Tools 2022](https://visualstudio.microsoft.com/downloads/#build-tools-for-visual-studio-2022)
-with the **"Desktop development with C++"** workload. Use the MSVC toolchain
-(the default from rustup on Windows) — the MinGW/GNU toolchain does not work
-with Tauri. WebView2 is pre-installed on Windows 11.
 
 ---
 
 ## Building
+
+This is a pretty standard Tauri2 app with local Rust crates.
+If you're familiar with that, building this app should be familiar. 
 
 ```bash
 # Install JS dependencies
@@ -95,11 +98,39 @@ npm run tauridev
 
 # Build a release app bundle
 npm run tauribuild
+
+# Build CLI tool usb-probester-cli
+cargo build --release -p usb-cli
+# → target/release/usb-probester-cli
+
 ```
 
----
+If you're unfarmiliar with Tauri, this app requires the following tools be installed: 
 
-## CLI
+- **Rust** — [rustup.rs](https://rustup.rs)
+- **Node.js** — v18 or later [nodejs.org](https://nodejs.org)
+- **Tauri CLI** — installed via `npm install`
+
+### OS-specific requirements:
+
+- Linux: 
+
+  - Install GTK/WebKit system libraries (Ubuntu/Debian):
+  
+  ```bash
+  sudo apt install libglib2.0-dev libgtk-3-dev libwebkit2gtk-4.1-dev \
+                 libayatana-appindicator3-dev librsvg2-dev
+  ```
+
+- Windows:
+
+  - [Visual Studio Build Tools 2022](https://visualstudio.microsoft.com/downloads/#build-tools-for-visual-studio-2022)
+  with the **"Desktop development with C++"** workload. Use the MSVC toolchain
+  (the default from rustup on Windows) — the MinGW/GNU toolchain does not work
+  with Tauri. WebView2 is pre-installed on Windows 11.
+
+
+### Commandline tool `usb-probester-cli`
 
 A standalone `usb-probester-cli` binary is included that doesn't require
 the GUI or a web runtime:
@@ -116,23 +147,25 @@ cargo build --release -p usb-cli
 # → target/release/usb-probester-cli
 ```
 
----
+### Workspace layout
 
-## GUI features
+```
+crates/
+  usb-types/              — shared Rust data model (serde + specta types)
+  usb-collector-macos/    — macOS USB enumeration via nusb + ioreg HID pass
+  usb-collector-linux/    — Linux USB enumeration via nusb + sysfs parsing
+  usb-collector-windows/  — Windows USB enumeration via nusb (partial)
+  hid-parser/             — platform-agnostic HID report descriptor parser
+  usb-cli/                — standalone CLI binary (usb-probester-cli)
+src-tauri/                — Tauri shell, backend commands, text formatter
+src/                      — React/TypeScript frontend
+tests/fixtures/           — reference output from original USB Prober.app
+```
 
-- **Tree view** — full collapsible descriptor tree matching Mac USB Prober's layout
-- **Split view** — device list on the left, tabbed descriptor panels on the right
-- **Row selection** — click or click-drag to select rows line-by-line; shift+click extends the range; `Cmd+C` copies selected rows as formatted text matching Save Output
-- **Save Output** (`Cmd/Ctrl+S`) — native save dialog; writes Mac USB Prober-style `.txt`
-- **Save JSON** (`Cmd/Ctrl+Shift+S`) — native save dialog; writes pretty-printed `.json`
-- **Refresh** (`Cmd/Ctrl+R`) — re-enumerates all connected devices on demand
-- **Auto-refresh** — toggle to watch for USB attach/detach events and refresh automatically
-- Native menu bar with File, View, Edit, and Window menus
-- Light and dark mode
 
----
+### Running the collectors (no UI needed)
 
-## Running the collectors (no UI needed)
+Each OS has it's own "collector" to get information about USB devices. 
 
 These examples validate the collector and HID parser against real hardware
 (or stored fixture data) without launching the full app.
