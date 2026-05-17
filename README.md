@@ -3,11 +3,11 @@
 A cross-platform desktop app for exploring connected USB devices — their
 device descriptors, configuration descriptors, interface and endpoint
 details, and parsed HID report descriptors. Spiritual successor to Apple's
-`USB Prober.app`.
-
-Built with [Tauri v2](https://tauri.app) (Rust backend, React/TypeScript frontend).
+__`USB Prober.app`__.
 
 Also ships a standalone CLI (`usb-probester-cli`) for text or JSON output.
+
+<img src="./docs/screenshot1.png" width="700">
 
 --- 
 
@@ -81,6 +81,10 @@ implemented. Full descriptor support requires hub IOCTLs (planned).
 
 ## Building
 
+This app is built with [Tauri v2](https://tauri.app)
+(Rust backend, React/TypeScript frontend), using the [`nusb`](https://docs.rs/nusb/latest/nusb/)
+Rust library for most USB data collection but a few OS-specific tricks where warranted. 
+
 This is a pretty standard Tauri2 app with local Rust crates.
 If you're familiar with that, building this app should be familiar. 
 
@@ -103,7 +107,7 @@ cargo build --release -p usb-cli
 
 ```
 
-If you're unfarmiliar with Tauri, this app requires the following tools be installed: 
+If you're unfarmiliar with Tauri, this app requires the following tools need to be installed: 
 
 - **Rust** — [rustup.rs](https://rustup.rs)
 - **Node.js** — v18 or later [nodejs.org](https://nodejs.org)
@@ -115,10 +119,10 @@ If you're unfarmiliar with Tauri, this app requires the following tools be insta
 
   - Install GTK/WebKit system libraries (Ubuntu/Debian):
   
-  ```bash
-  sudo apt install libglib2.0-dev libgtk-3-dev libwebkit2gtk-4.1-dev \
-                 libayatana-appindicator3-dev librsvg2-dev
-  ```
+    ```bash
+    sudo apt install libglib2.0-dev libgtk-3-dev libwebkit2gtk-4.1-dev \
+                     libayatana-appindicator3-dev librsvg2-dev
+    ```
 
 - Windows:
 
@@ -145,7 +149,7 @@ cargo build --release -p usb-cli
 # → target/release/usb-probester-cli
 ```
 
-Note on MacOS if you want to run an unsigned binary, you need to clear the 
+*MacOS note:* if you want to run an unsigned binary, you need to clear the 
 `quarantine` attribute with:
 
 ```bash
@@ -160,6 +164,7 @@ crates/
   usb-collector-macos/    — macOS USB enumeration via nusb + ioreg HID pass
   usb-collector-linux/    — Linux USB enumeration via nusb + sysfs parsing
   usb-collector-windows/  — Windows USB enumeration via nusb (partial)
+  usb-formatter/          — Format USB data into human-readable form
   hid-parser/             — platform-agnostic HID report descriptor parser
   usb-cli/                — standalone CLI binary (usb-probester-cli)
 src-tauri/                — Tauri shell, backend commands, text formatter
