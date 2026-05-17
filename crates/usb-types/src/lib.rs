@@ -1,6 +1,27 @@
 use serde::{Deserialize, Serialize};
 use specta::Type;
 
+/// Well-known USB device/interface class codes (bDeviceClass / bInterfaceClass).
+pub mod usb_class {
+    pub const COMPOSITE:          u8 = 0x00;
+    pub const AUDIO:              u8 = 0x01;
+    pub const COMMUNICATIONS:     u8 = 0x02;
+    pub const HID:                u8 = 0x03;
+    pub const PHYSICAL:           u8 = 0x05;
+    pub const IMAGE:              u8 = 0x06;
+    pub const PRINTER:            u8 = 0x07;
+    pub const MASS_STORAGE:       u8 = 0x08;
+    pub const HUB:                u8 = 0x09;
+    pub const CDC_DATA:           u8 = 0x0A;
+    pub const SMART_CARD:         u8 = 0x0B;
+    pub const VIDEO:              u8 = 0x0E;
+    pub const DIAGNOSTIC:         u8 = 0xDC;
+    pub const WIRELESS:           u8 = 0xE0;
+    pub const MISCELLANEOUS:      u8 = 0xEF;
+    pub const APPLICATION:        u8 = 0xFE;
+    pub const VENDOR_SPECIFIC:    u8 = 0xFF;
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct UsbDevice {
     pub location_id: String,

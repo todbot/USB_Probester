@@ -1,6 +1,6 @@
 use std::fmt::Write;
 use hid_parser::render_text;
-use usb_types::*;
+use usb_types::{self, usb_class, *};
 
 pub fn format_devices(devices: &[UsbDevice]) -> String {
     let mut out = String::new();
@@ -355,32 +355,32 @@ fn speed_label(s: &UsbSpeed) -> &'static str {
 
 fn device_class_header(class: u8) -> &'static str {
     match class {
-        0    => "Composite device",
-        9    => "Hub device",
-        0xFF => "Vendor Specific device",
-        _    => "Device",
+        usb_class::COMPOSITE     => "Composite device",
+        usb_class::HUB           => "Hub device",
+        usb_class::VENDOR_SPECIFIC => "Vendor Specific device",
+        _                        => "Device",
     }
 }
 
 fn class_label(class: u8) -> &'static str {
     match class {
-        0    => "Composite",
-        1    => "Audio",
-        2    => "Communications-Control",
-        3    => "HID",
-        5    => "Physical",
-        6    => "Image",
-        7    => "Printer",
-        8    => "Mass Storage",
-        9    => "Hub",
-        10   => "Communications-Data",
-        11   => "Smart Card",
-        14   => "Video",
-        0xDC => "Diagnostic",
-        0xE0 => "Wireless Controller",
-        0xFE => "Application Specific",
-        0xFF => "Vendor Specific",
-        _    => "Unknown",
+        usb_class::COMPOSITE     => "Composite",
+        usb_class::AUDIO         => "Audio",
+        usb_class::COMMUNICATIONS => "Communications-Control",
+        usb_class::HID           => "HID",
+        usb_class::PHYSICAL      => "Physical",
+        usb_class::IMAGE         => "Image",
+        usb_class::PRINTER       => "Printer",
+        usb_class::MASS_STORAGE  => "Mass Storage",
+        usb_class::HUB           => "Hub",
+        usb_class::CDC_DATA      => "Communications-Data",
+        usb_class::SMART_CARD    => "Smart Card",
+        usb_class::VIDEO         => "Video",
+        usb_class::DIAGNOSTIC    => "Diagnostic",
+        usb_class::WIRELESS      => "Wireless Controller",
+        usb_class::APPLICATION   => "Application Specific",
+        usb_class::VENDOR_SPECIFIC => "Vendor Specific",
+        _                        => "Unknown",
     }
 }
 
@@ -403,10 +403,10 @@ fn subclass_label(class: u8, subclass: u8) -> &'static str {
 
 fn dev_protocol_label(class: u8, protocol: u8) -> &'static str {
     match (class, protocol) {
-        (9, 0) => "Full/Low Speed",
-        (9, 1) => "High Speed Single Transaction Translator",
-        (9, 2) => "High Speed Multi Transaction Translator",
-        _      => "",
+        (usb_class::HUB, 0) => "Full/Low Speed",
+        (usb_class::HUB, 1) => "High Speed Single Transaction Translator",
+        (usb_class::HUB, 2) => "High Speed Multi Transaction Translator",
+        _                   => "",
     }
 }
 

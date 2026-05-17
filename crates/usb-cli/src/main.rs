@@ -1,5 +1,5 @@
 use clap::{Parser, ValueEnum};
-use usb_types::*;
+use usb_types::{usb_class, *};
 
 #[derive(Parser)]
 #[command(name = "usb-probester-cli", about = "Dump USB device information")]
@@ -7,6 +7,9 @@ struct Cli {
     /// Output format
     #[arg(short, long, value_enum, default_value = "tree")]
     format: Format,
+    /// Omit USB hubs from output
+    #[arg(long)]
+    hide_hubs: bool,
 }
 
 #[derive(Clone, ValueEnum)]
@@ -19,7 +22,10 @@ enum Format {
 
 fn main() {
     let cli = Cli::parse();
-    let devices = enumerate();
+    let mut devices = enumerate();
+    if cli.hide_hubs {
+        devices.retain(|d| d.device_descriptor.b_device_class != usb_class::HUB);
+    }
     match cli.format {
         Format::Tree => print!("{}", usb_formatter::format_devices(&devices)),
         Format::Json => println!("{}", serde_json::to_string_pretty(&devices).expect("serialize failed")),

@@ -33,6 +33,28 @@ import type {
 } from "./bindings";
 import "./App.css";
 
+// ── USB class codes (mirrors usb_types::usb_class) ───────────────────────────
+
+const UsbClass = {
+  COMPOSITE:      0x00,
+  AUDIO:          0x01,
+  COMMUNICATIONS: 0x02,
+  HID:            0x03,
+  PHYSICAL:       0x05,
+  IMAGE:          0x06,
+  PRINTER:        0x07,
+  MASS_STORAGE:   0x08,
+  HUB:            0x09,
+  CDC_DATA:       0x0A,
+  SMART_CARD:     0x0B,
+  VIDEO:          0x0E,
+  DIAGNOSTIC:     0xDC,
+  WIRELESS:       0xE0,
+  MISCELLANEOUS:  0xEF,
+  APPLICATION:    0xFE,
+  VENDOR_SPECIFIC: 0xFF,
+} as const;
+
 // ── helpers ───────────────────────────────────────────────────────────────────
 
 // mirrors speed_label() in crates/usb-formatter/src/lib.rs
@@ -75,10 +97,22 @@ function hexDump(bytes: number[]): string {
 // mirrors class_label() in crates/usb-formatter/src/lib.rs
 function deviceClassLabel(cls: number): string {
   const labels: Record<number, string> = {
-    0: "Composite", 1: "Audio", 2: "Communications", 3: "HID",
-    5: "Physical", 6: "Still Imaging", 7: "Printer", 8: "Mass Storage",
-    9: "Hub", 10: "CDC Data", 11: "Smart Card", 14: "Video",
-    224: "Wireless", 239: "Misc", 254: "Application Specific", 255: "Vendor Specific",
+    [UsbClass.COMPOSITE]:      "Composite",
+    [UsbClass.AUDIO]:          "Audio",
+    [UsbClass.COMMUNICATIONS]: "Communications",
+    [UsbClass.HID]:            "HID",
+    [UsbClass.PHYSICAL]:       "Physical",
+    [UsbClass.IMAGE]:          "Still Imaging",
+    [UsbClass.PRINTER]:        "Printer",
+    [UsbClass.MASS_STORAGE]:   "Mass Storage",
+    [UsbClass.HUB]:            "Hub",
+    [UsbClass.CDC_DATA]:       "CDC Data",
+    [UsbClass.SMART_CARD]:     "Smart Card",
+    [UsbClass.VIDEO]:          "Video",
+    [UsbClass.WIRELESS]:       "Wireless",
+    [UsbClass.MISCELLANEOUS]:  "Misc",
+    [UsbClass.APPLICATION]:    "Application Specific",
+    [UsbClass.VENDOR_SPECIFIC]: "Vendor Specific",
   };
   return labels[cls] ?? `0x${hex2(cls)}`;
 }
@@ -163,7 +197,7 @@ function attrsLabel(attr: number): string {
 
 // ── TreeNode ──────────────────────────────────────────────────────────────────
 
-const LABEL_BASE = 450;
+const LABEL_BASE = 600;
 const INDENT = 16;
 
 function TreeNode({
@@ -650,7 +684,7 @@ function DeviceNode({ device }: { device: UsbDevice_Serialize }) {
   const dd = device.device_descriptor;
   const product = getString(device, dd.i_product) ?? "(no product)";
   const typeLabel =
-    dd.b_device_class === 9 ? "Hub device"
+    dd.b_device_class === UsbClass.HUB ? "Hub device"
     : dd.b_device_class === 0 ? "Composite device"
     : `${deviceClassLabel(dd.b_device_class)} device`;
 
@@ -766,8 +800,12 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [view, setView] = useState<View>("tree");
   const [autoRefresh, setAutoRefresh] = useState(true);
+  const [hideHubs, setHideHubs] = useState(false);
   const [showAbout, setShowAbout] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const visibleDevices = hideHubs
+    ? devices.filter(d => d.device_descriptor.b_device_class !== UsbClass.HUB)
+    : devices;
   const anchorIdRef = useRef<string | null>(null);
   const isDragging = useRef(false);
 
@@ -798,7 +836,7 @@ export default function App() {
     let path = await save({ defaultPath: "usb-devices.txt" });
     if (!path) return;
     if (!path.endsWith(".txt")) path += ".txt";
-    const text = await commands.formatAsText(devices);
+    const text = await commands.formatAsText(visibleDevices);
     await commands.writeTextFile(path, text);
   }
 
@@ -806,7 +844,7 @@ export default function App() {
     let path = await save({ defaultPath: "usb-devices.json" });
     if (!path) return;
     if (!path.endsWith(".json")) path += ".json";
-    await commands.writeTextFile(path, JSON.stringify(devices, null, 2));
+    await commands.writeTextFile(path, JSON.stringify(visibleDevices, null, 2));
   }
 
   async function refresh() {
@@ -913,12 +951,15 @@ export default function App() {
             <span className="auto-toggle-track" />
             Auto
           </label>
-        </div>
-        <div className="header-mid">
-          <button onClick={saveOutput} disabled={devices.length === 0}>Save Output</button>
-          <button onClick={saveJson} disabled={devices.length === 0}>Save JSON</button>
+          <label className="auto-toggle">
+            <input type="checkbox" checked={hideHubs} onChange={e => setHideHubs(e.target.checked)} />
+            <span className="auto-toggle-track" />
+            Hide Hubs
+          </label>
         </div>
         <div className="header-end">
+          <button onClick={saveOutput} disabled={visibleDevices.length === 0}>Save Output</button>
+          <button onClick={saveJson} disabled={visibleDevices.length === 0}>Save JSON</button>
           <div className="view-toggle">
             <button className={view === "tree" ? "active" : ""} onClick={() => setView("tree")}>Tree</button>
             <button className={view === "split" ? "active" : ""} onClick={() => setView("split")}>Split</button>
@@ -932,16 +973,16 @@ export default function App() {
         {view === "tree" ? (
           <DepthCtx.Provider value={0}>
             <div className="device-list">
-              {devices.length === 0 && !loading && !error && (
+              {visibleDevices.length === 0 && !loading && !error && (
                 <div className="empty">No USB devices found.</div>
               )}
-              {devices.map((d) => (
+              {visibleDevices.map((d) => (
                 <DeviceNode key={d.location_id} device={d} />
               ))}
             </div>
           </DepthCtx.Provider>
         ) : (
-          <SplitView devices={devices} />
+          <SplitView devices={visibleDevices} />
         )}
       </SelectionCtx.Provider>
 

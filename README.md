@@ -92,14 +92,14 @@ npm install
 cargo build
 
 # Run the Tauri dev server (hot-reload frontend + Rust backend)
-npm run tauridev
+npm run tauridev  # (will also build needed crates)
 
 # Build a release app bundle
 npm run tauribuild
 
 # Build CLI tool usb-probester-cli
 cargo build --release -p usb-cli
-# → target/release/usb-probester-cli
+./target/release/usb-probester-cli
 
 ```
 
