@@ -31,7 +31,10 @@ fn format_device(d: &UsbDevice, out: &mut String) {
     let _ = writeln!(out, "           Enabled");
 
     if let Some(cfg) = d.configurations.first() {
-        let ep_count: usize = cfg.interfaces.iter().map(|i| i.endpoints.len()).sum::<usize>() + 1;
+        let ep_count: usize = cfg.interfaces.iter()
+            .filter(|i| i.b_alternate_setting == 0)
+            .map(|i| i.endpoints.len())
+            .sum::<usize>() + 1;
         let _ = writeln!(out, "    Number Of Endpoints (includes EP0):   ");
         let _ = writeln!(out,
             "        Total Endpoints for Configuration {} (current):   {}",
@@ -55,10 +58,12 @@ fn format_device_descriptor(d: &UsbDevice, out: &mut String) {
     let _ = writeln!(out, "        Descriptor Version Number:   0x{:04X}", dd.bcd_usb);
     let _ = writeln!(out, "        Device Class:   {}   ({})", class, class_label(class));
     let _ = writeln!(out, "        Device Subclass:   {}", dd.b_device_sub_class);
-    let _ = writeln!(out,
-        "        Device Protocol:   {}   ({})",
-        dd.b_device_protocol, dev_protocol_label(class, dd.b_device_protocol)
-    );
+    let proto_label = dev_protocol_label(class, dd.b_device_protocol);
+    if proto_label.is_empty() {
+        let _ = writeln!(out, "        Device Protocol:   {}", dd.b_device_protocol);
+    } else {
+        let _ = writeln!(out, "        Device Protocol:   {}   ({})", dd.b_device_protocol, proto_label);
+    }
     let _ = writeln!(out, "        Device MaxPacketSize:   {}", dd.b_max_packet_size0);
     let _ = writeln!(out,
         "        Device VendorID/ProductID:   0x{:04X}/0x{:04X}   (unknown vendor)",
@@ -118,14 +123,19 @@ fn format_interface(d: &UsbDevice, iface: &InterfaceDescriptor, out: &mut String
         format!("{}/{}", class_name, sub_name)
     };
 
+    let alt_suffix = if iface.b_alternate_setting > 0 {
+        format!(" (#{})", iface.b_alternate_setting)
+    } else {
+        String::new()
+    };
     if let Some(name) = string_for(d, iface.i_interface) {
         let _ = writeln!(out,
-            "        Interface #{} - {} ..............................................   \"{}\"",
-            iface.b_interface_number, class_sub, name
+            "        Interface #{} - {}{} ..............................................   \"{}\"",
+            iface.b_interface_number, class_sub, alt_suffix, name
         );
     } else {
         let _ = writeln!(out,
-            "        Interface #{} - {}   ", iface.b_interface_number, class_sub
+            "        Interface #{} - {}{}   ", iface.b_interface_number, class_sub, alt_suffix
         );
     }
 
