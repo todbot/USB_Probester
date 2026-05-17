@@ -1,4 +1,3 @@
-mod formatter;
 
 #[cfg(target_os = "macos")]
 use usb_collector_macos::MacCollector;
@@ -29,7 +28,7 @@ fn enumerate_usb() -> Result<Vec<UsbDevice>, String> {
 #[tauri::command]
 #[specta::specta]
 fn format_as_text(devices: Vec<UsbDevice>) -> String {
-    formatter::format_devices(&devices)
+    usb_formatter::format_devices(&devices)
 }
 
 #[tauri::command]

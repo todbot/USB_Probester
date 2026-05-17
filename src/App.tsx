@@ -197,18 +197,20 @@ function attrsLabel(attr: number): string {
 
 // ── TreeNode ──────────────────────────────────────────────────────────────────
 
-const LABEL_BASE = 600;
+const LABEL_BASE = 500;  // space between left and right halves of info
 const INDENT = 16;
 
 function TreeNode({
   label,
   value,
   defaultOpen = false,
+  showDots = false,
   children,
 }: {
   label: string;
   value?: string;
   defaultOpen?: boolean;
+  showDots?: boolean;
   children?: ReactNode;
 }) {
   const [open, setOpen] = useState(defaultOpen);
@@ -244,7 +246,7 @@ function TreeNode({
         >{hasChildren ? (open ? "▾" : "▸") : ""}</span>
         <span className="label-area" style={{ flex: `0 0 ${labelWidth}px` }}>
           <span className="lbl">{label}</span>
-          {value !== undefined && <span className="dots" aria-hidden="true" />}
+          {showDots && value !== undefined && <span className="dots" aria-hidden="true" />}
         </span>
         {value !== undefined && <span className="val">{value}</span>}
       </div>
@@ -285,7 +287,6 @@ function Leaf({ label, value }: { label: string; value?: string }) {
         <span className="toggle" />
         <span className="label-area" style={{ flex: `0 0 ${labelWidth}px` }}>
           <span className="lbl">{label}</span>
-          {value !== undefined && <span className="dots" aria-hidden="true" />}
         </span>
         {value !== undefined && <span className="val">{value}</span>}
       </div>
@@ -577,7 +578,7 @@ function InterfaceNode({
   const value = ifaceString ? `"${ifaceString}"` : undefined;
 
   return (
-    <TreeNode label={label} value={value}>
+    <TreeNode label={label} value={value} showDots>
       <Leaf label="Alternate Setting" value={`${iface.b_alternate_setting}`} />
       <Leaf label="Number of Endpoints" value={`${iface.endpoints.length}`} />
       <Leaf label="Interface Class:" value={`${iface.b_interface_class}   (${deviceClassLabel(iface.b_interface_class)})`} />
@@ -692,7 +693,7 @@ function DeviceNode({ device }: { device: UsbDevice_Serialize }) {
   const value = `${typeLabel}: "${product}"`;
 
   return (
-    <TreeNode label={label} value={value}>
+    <TreeNode label={label} value={value} showDots>
       <TreeNode label="Number Of Endpoints (includes EP0):">
         {device.configurations.map((cfg, i) => {
           const total = cfg.interfaces.reduce((sum, iface) => sum + iface.endpoints.length, 0) + 1;

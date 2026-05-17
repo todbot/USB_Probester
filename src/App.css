@@ -211,6 +211,7 @@ button:disabled { opacity: 0.4; cursor: default; }
   flex: 1;
   overflow: hidden;
   min-width: 8px;
+  align-self: stretch;
   background-image: radial-gradient(circle, var(--dots) 1px, transparent 1px);
   background-size: 5px 100%;
   background-repeat: repeat-x;
