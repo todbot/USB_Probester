@@ -145,6 +145,13 @@ cargo build --release -p usb-cli
 # → target/release/usb-probester-cli
 ```
 
+Note on MacOS if you want to run an unsigned binary, you need to clear the 
+`quarantine` attribute with:
+
+```bash
+xattr -cr target/release/usb-probester-cli
+```
+
 ### Workspace layout
 
 ```
@@ -278,6 +285,6 @@ USB enumeration uses two passes:
 ### Related tools
 
 - [lsusb for Linux](https://linux.wiki/docs/commands/system-info/lsusb/) — Linux, no HID report descriptor usually
-- [lsusb for Mac OS X](https://github.com/jlhonora/lsusb) — macOS only and only partial data
+- [lsusb for Mac OS X](https://github.com/jlhonora/lsusb) — macOS (pre-Tahoe) only and only partial data
 - [USBDeview](https://www.nirsoft.net/utils/usb_devices_view.html) — Windows-only
 - [USB Device Tree Viewer](https://www.uwe-sieber.de/usbtreeview_e.html) — Windows-only
