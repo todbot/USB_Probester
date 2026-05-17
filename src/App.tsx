@@ -762,7 +762,7 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [view, setView] = useState<View>("tree");
-  const [autoRefresh, setAutoRefresh] = useState(false);
+  const [autoRefresh, setAutoRefresh] = useState(true);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const anchorIdRef = useRef<string | null>(null);
   const isDragging = useRef(false);

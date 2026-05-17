@@ -61,8 +61,6 @@ output format and correctness.
 - **Save JSON** (`Cmd/Ctrl+Shift+S`) — native save dialog; writes pretty-printed `.json`
 - **Refresh** (`Cmd/Ctrl+R`) — re-enumerates all connected devices on demand
 - **Auto-refresh** — toggle to watch for USB attach/detach events and refresh automatically
-- Native menu bar with File, View, Edit, and Window menus
-- Light and dark mode
 
 ---
 
