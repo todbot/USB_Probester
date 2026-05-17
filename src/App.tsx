@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { save } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { listen } from "@tauri-apps/api/event";
+import { version as appVersion } from "../package.json";
 
 const DepthCtx = createContext(0);
 
@@ -949,7 +950,7 @@ export default function App() {
           <div className="modal-box" onClick={(e) => e.stopPropagation()}>
             <img src={appIcon} className="modal-icon" alt="USB Probester icon" />
             <h2>USB Probester</h2>
-            <p className="modal-version">v0.1.0</p>
+            <p className="modal-version">v{appVersion}, 2026, todbot / Tod Kurt</p>
             <p>A cross-platform USB device inspector.<br />Spiritual successor to Apple's USB&nbsp;Prober.app.</p>
             <p>
               <button className="modal-link" onClick={() => openUrl("https://github.com/todbot/USB_Probester")}>

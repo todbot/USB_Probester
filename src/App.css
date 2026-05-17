@@ -393,7 +393,7 @@ button:disabled { opacity: 0.4; cursor: default; }
 .modal-icon {
   width: 64px;
   height: 64px;
-  align-self: center;
+  align-self: left;
 }
 
 .modal-box h2 {
