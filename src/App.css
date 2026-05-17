@@ -120,7 +120,11 @@ header {
   flex: 1;
   display: flex;
   justify-content: flex-end;
-  gap: 16px;
+  gap: 8px;
+}
+
+.header-end button:first-child {
+  margin-left: 36px;
 }
 
 h1 { font-size: 1.05em; font-weight: 600; color: var(--text); margin-right: 24px; }
