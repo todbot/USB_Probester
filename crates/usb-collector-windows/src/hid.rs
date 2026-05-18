@@ -67,17 +67,7 @@ const CM_GET_DEVICE_INTERFACE_LIST_PRESENT: u32 = 0;
 // Fixed header size of USB_DESCRIPTOR_REQUEST (ConnectionIndex + SetupPacket).
 const USB_REQ_HDR: usize = 12;
 
-// ── Manual DLL function declarations ───────────────────────────────────────────
-// hid.dll — HidD_GetReportDescriptor is not exposed by windows-sys.
-#[link(name = "hid", kind = "raw-dylib")]
-extern "system" {
-    fn HidD_GetReportDescriptor(
-        HidDeviceObject: HANDLE,
-        ReportDescriptor: *mut core::ffi::c_void,
-        ReportDescriptorLength: u32,
-    ) -> u8; // BOOLEAN
-}
-
+// ── CM function declarations ────────────────────────────────────────────────────
 // cfgmgr32.dll is always present on Windows; declare manually to avoid needing
 // an additional windows-sys feature.
 
@@ -290,11 +280,8 @@ fn read_hid(handle: HANDLE, interface_number: u8, dev_inst: u32) -> Option<(HidK
     let pid = attrs.ProductID;
     let serial = get_serial(handle);
 
-    // Try hub IOCTL (exact length, works on real hardware hubs).
-    // Fall back to HidD_GetReportDescriptor (works even behind KVM / virtual hubs,
-    // since it talks directly to HID.sys rather than through the USB hub).
+    // Try hub IOCTL; fall back to empty bytes so the interface still appears.
     let raw = get_report_descriptor_via_hub(dev_inst, interface_number)
-        .or_else(|| get_report_descriptor_via_hid_api(handle))
         .unwrap_or_default();
     let parsed = if raw.is_empty() { None } else { hid_parser::parse(&raw).ok() };
 
@@ -319,34 +306,6 @@ fn get_serial(handle: HANDLE) -> Option<String> {
     let end = buf.iter().position(|&c| c == 0).unwrap_or(buf.len());
     let s = String::from_utf16_lossy(&buf[..end]);
     if s.is_empty() { None } else { Some(s) }
-}
-
-// ── HidD_GetReportDescriptor fallback ─────────────────────────────────────────
-
-/// Retrieve the HID report descriptor bytes directly via HID.sys.
-///
-/// `HidD_GetReportDescriptor` succeeds when the buffer is >= the actual descriptor
-/// length and writes the descriptor bytes into the buffer (trailing bytes remain
-/// zero).  We probe ascending sizes and take the first success, then trim trailing
-/// zeros; HID descriptors always end in End Collection (0xC0), so the last real
-/// byte is non-zero.
-fn get_report_descriptor_via_hid_api(handle: HANDLE) -> Option<Vec<u8>> {
-    const PROBE_SIZES: &[u32] = &[32, 64, 128, 256, 512, 1024, 2048, 4096];
-    for &size in PROBE_SIZES {
-        let mut buf = vec![0u8; size as usize];
-        let ok = unsafe {
-            HidD_GetReportDescriptor(handle, buf.as_mut_ptr() as *mut core::ffi::c_void, size)
-        };
-        if ok != 0 {
-            let actual = buf.iter().rposition(|&b| b != 0).map_or(0, |i| i + 1);
-            if actual == 0 {
-                return None;
-            }
-            buf.truncate(actual);
-            return Some(buf);
-        }
-    }
-    None
 }
 
 // ── Hub IOCTL path ─────────────────────────────────────────────────────────────

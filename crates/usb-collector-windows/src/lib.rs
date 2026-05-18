@@ -247,28 +247,40 @@ fn fill_hid_from_device(
                 continue;
             }
 
-            // Claim the interface to issue control transfers on Windows (WinUSB requirement).
-            // This fails if another driver (HID.sys) owns the interface — skip silently.
-            let iface_handle = match device.claim_interface(inum).wait() {
-                Ok(h) => h,
-                Err(_) => continue,
-            };
-
-            // Standard GET_DESCRIPTOR, recipient=Interface.
-            // On Windows, index must equal the interface number (WinUSB limitation).
-            let raw = iface_handle
-                .control_in(
-                    ControlIn {
-                        control_type: ControlType::Standard,
-                        recipient: Recipient::Interface,
-                        request: 0x06,
-                        value: 0x2200,
-                        index: inum as u16,
-                        length: report_len,
-                    },
-                    timeout,
+            // Try to claim the HID interface directly (works if WinUSB owns it).
+            // If HID.sys owns it, claim_interface fails; fall back to claiming any
+            // other interface on the device and targeting the HID interface via wIndex.
+            // EP0 is shared across all interfaces, so the USB packet still reaches
+            // the device — Windows may or may not enforce the interface-ownership check.
+            let candidate_inums: Vec<u8> = std::iter::once(inum)
+                .chain(
+                    cfg.interfaces
+                        .iter()
+                        .filter(|i| i.b_interface_number != inum)
+                        .map(|i| i.b_interface_number),
                 )
-                .wait()
+                .collect();
+
+            let raw = candidate_inums
+                .iter()
+                .find_map(|&claim_inum| {
+                    let h = device.claim_interface(claim_inum).wait().ok()?;
+                    let bytes = h
+                        .control_in(
+                            ControlIn {
+                                control_type: ControlType::Standard,
+                                recipient: Recipient::Interface,
+                                request: 0x06,
+                                value: 0x2200,
+                                index: inum as u16,
+                                length: report_len,
+                            },
+                            timeout,
+                        )
+                        .wait()
+                        .unwrap_or_default();
+                    if bytes.is_empty() { None } else { Some(bytes) }
+                })
                 .unwrap_or_default();
 
             let parsed = if raw.is_empty() { None } else { hid_parser::parse(&raw).ok() };
