@@ -114,9 +114,6 @@ fn format_config_descriptor(d: &UsbDevice, cfg: &ConfigDescriptor, out: &mut Str
         }
         format_interface(d, iface, out);
     }
-    for hid in &d.hid_interfaces {
-        format_hid_descriptor(hid, out);
-    }
 }
 
 // ── Interface ─────────────────────────────────────────────────────────────────
@@ -159,7 +156,16 @@ fn format_interface(d: &UsbDevice, iface: &InterfaceDescriptor, out: &mut String
     let _ = writeln!(out, "            Interface Protocol:   {}", iface.b_interface_protocol);
 
     for cs in &iface.class_descriptors {
-        format_class_specific(class, sub, cs, out);
+        if iface.b_interface_class == usb_class::HID && cs.descriptor_type == 0x21 {
+            let hid = if iface.b_alternate_setting == 0 {
+                d.hid_interfaces.iter().find(|h| h.interface_number == iface.b_interface_number)
+            } else {
+                None
+            };
+            format_hid_class_descriptor(cs, hid, out);
+        } else {
+            format_class_specific(class, sub, cs, out);
+        }
     }
     for ep in &iface.endpoints {
         format_endpoint(ep, out);
@@ -174,23 +180,6 @@ fn format_class_specific(iface_class: u8, iface_sub_class: u8, cs: &usb_types::C
     let data = &cs.data;
     let hex_data = |d: &[u8]| d.iter().map(|b| format!("{:02X}", b)).collect::<Vec<_>>().join(" ");
     let jack_type = |t: u8| match t { 0x01 => "Embedded", 0x02 => "External", _ => "Unknown" };
-
-    if typ == 0x21 {
-        let bcd_hid = if data.len() >= 2 { u16::from_le_bytes([data[0], data[1]]) } else { 0 };
-        let _ = writeln!(out, "            HID Descriptor");
-        let _ = writeln!(out, "                bcdHID:   0x{:04X}", bcd_hid);
-        if data.len() >= 4 {
-            let _ = writeln!(out, "                bCountryCode:   {}", data[2]);
-            let _ = writeln!(out, "                bNumDescriptors:   {}", data[3]);
-        }
-        if data.len() >= 7 {
-            let desc_type_name = match data[4] { 0x22 => "Report", 0x23 => "Physical", _ => "Unknown" };
-            let desc_len = u16::from_le_bytes([data[5], data[6]]);
-            let _ = writeln!(out, "                bDescriptorType:   {}", desc_type_name);
-            let _ = writeln!(out, "                wDescriptorLength:   {}", desc_len);
-        }
-        return;
-    }
 
     if typ == 0x24 && iface_class == 0x02 {
         let label = match sub {
@@ -308,13 +297,48 @@ fn format_endpoint(ep: &EndpointDescriptor, out: &mut String) {
     let _ = writeln!(out, "                Polling Interval:   {} ms", ep.b_interval);
 }
 
-// ── HID Report Descriptor ─────────────────────────────────────────────────────
+// ── HID Descriptor (class-specific + report descriptor bytes + parsed) ────────
 
-fn format_hid_descriptor(hid: &HidInterface, out: &mut String) {
-    if hid.raw_report_descriptor.is_empty() { return; }
-    let _ = writeln!(out, "                    Parsed Report Descriptor:   ");
-    if let Some(nodes) = &hid.parsed {
-        let _ = write!(out, "{}", render_text(nodes, 26));
+fn format_hid_class_descriptor(
+    cs: &ClassSpecificDescriptor,
+    hid_iface: Option<&HidInterface>,
+    out: &mut String,
+) {
+    let data = &cs.data;
+    let bcd_hid = if data.len() >= 2 { u16::from_le_bytes([data[0], data[1]]) } else { 0 };
+    let country_code = data.get(2).copied().unwrap_or(0);
+    let num_descriptors = data.get(3).copied().unwrap_or(0) as usize;
+
+    let _ = writeln!(out, "            HID Descriptor   ");
+    let _ = writeln!(out, "                Descriptor Version Number:   0x{:04X}", bcd_hid);
+    let _ = writeln!(out, "                Country Code:   {}", country_code);
+    let _ = writeln!(out, "                Descriptor Count:   {}", num_descriptors);
+
+    for i in 0..num_descriptors {
+        let offset = 4 + i * 3;
+        if offset + 3 > data.len() { break; }
+        let desc_type = data[offset];
+        let desc_len = u16::from_le_bytes([data[offset + 1], data[offset + 2]]);
+        let type_label = match desc_type {
+            0x22 => "Report Descriptor",
+            0x23 => "Physical Descriptor",
+            _ => "Unknown",
+        };
+        let _ = writeln!(out, "                Descriptor {}   ", i + 1);
+        let _ = writeln!(out, "                    Type:   0x{:02X}  ({})", desc_type, type_label);
+        let _ = writeln!(out, "                    Length (and contents):   {}", desc_len);
+
+        if desc_type == 0x22 {
+            if let Some(hid) = hid_iface {
+                if !hid.raw_report_descriptor.is_empty() {
+                    format_raw_hex(&hid.raw_report_descriptor, 24, out);
+                    let _ = writeln!(out, "                    Parsed Report Descriptor:   ");
+                    if let Some(nodes) = &hid.parsed {
+                        let _ = write!(out, "{}", render_text(nodes, 26));
+                    }
+                }
+            }
+        }
     }
 }
 
