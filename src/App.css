@@ -1,7 +1,7 @@
 /* ── Color tokens ─────────────────────────────────────────────────────────── */
 
 :root {
-  --bg:           #ffffff;
+  --bg:           #f5f5f5;
   --bg-surface:   #ffffff;
   --bg-hover:     #dde5f0;
   --bg-selected:  #2f6fd0;
@@ -101,6 +101,8 @@ header {
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
   background: var(--bg);
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 .header-start {
