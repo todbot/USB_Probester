@@ -54,9 +54,9 @@ jobs:
           - platform: macos-latest   # universal binary (arm64 + x86_64)
             rust-target: aarch64-apple-darwin,x86_64-apple-darwin
             tauri-args: --target universal-apple-darwin
-          # - platform: windows-latest
-          #   rust-target: ''
-          #   tauri-args: ''
+          - platform: windows-latest
+            rust-target: ''
+            tauri-args: ''
           - platform: ubuntu-22.04
             rust-target: ''
             tauri-args: ''
