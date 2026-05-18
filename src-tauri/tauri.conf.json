@@ -13,7 +13,7 @@
     "windows": [
       {
         "title": "USB Probester",
-        "width": 900,
+        "width": 850,
         "height": 500,
         "minWidth": 800,
         "minHeight": 300
