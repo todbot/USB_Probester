@@ -16,12 +16,29 @@ use windows_sys::Win32::Devices::DeviceAndDriverInstallation::{
     SP_DEVICE_INTERFACE_DATA, SP_DEVICE_INTERFACE_DETAIL_DATA_W,
 };
 use windows_sys::Win32::Devices::HumanInterfaceDevice::{
-    HidD_GetAttributes, HidD_GetReportDescriptor, HidD_GetSerialNumberString, HIDD_ATTRIBUTES,
+    HidD_GetAttributes, HidD_GetSerialNumberString, HIDD_ATTRIBUTES,
 };
 use windows_sys::Win32::Foundation::{CloseHandle, HANDLE, INVALID_HANDLE_VALUE};
 use windows_sys::Win32::Storage::FileSystem::{
-    CreateFileW, FILE_SHARE_READ, FILE_SHARE_WRITE, GENERIC_READ, GENERIC_WRITE, OPEN_EXISTING,
+    CreateFileW, FILE_SHARE_READ, FILE_SHARE_WRITE, OPEN_EXISTING,
 };
+
+// GENERIC_READ/WRITE are not re-exported by Win32::Storage::FileSystem in this
+// version of windows-sys — define them directly from the SDK headers.
+const GENERIC_READ: u32 = 0x80000000;
+const GENERIC_WRITE: u32 = 0x40000000;
+
+// HidD_GetReportDescriptor is missing from the windows-sys 0.59 bindings.
+// hid.dll is already linked via the Win32_Devices_HumanInterfaceDevice feature,
+// so declare the function manually against the same import library.
+#[link(name = "hid")]
+extern "system" {
+    fn HidD_GetReportDescriptor(
+        HidDeviceObject: HANDLE,
+        ReportDescriptor: *mut core::ffi::c_void,
+        ReportDescriptorLength: u32,
+    ) -> i32;
+}
 
 // {4D1E55B2-F16F-11CF-88CB-001111000030}
 const GUID_DEVINTERFACE_HID: windows_sys::core::GUID = windows_sys::core::GUID {
@@ -30,6 +47,10 @@ const GUID_DEVINTERFACE_HID: windows_sys::core::GUID = windows_sys::core::GUID {
     data3: 0x11CF,
     data4: [0x88, 0xCB, 0x00, 0x11, 0x11, 0x00, 0x00, 0x30],
 };
+
+// HDEVINFO is isize in windows-sys; INVALID_HANDLE_VALUE is *mut c_void (-1).
+// The sentinel value for a failed SetupDiGetClassDevsW is the same bit-pattern.
+const INVALID_HDEVINFO: HDEVINFO = -1isize;
 
 /// Map key matching `make_location_id()` logic in lib.rs.
 pub type HidKey = (u16, u16, Option<String>); // (vid, pid, serial)
@@ -47,7 +68,7 @@ pub fn collect_hid_descriptors() -> HashMap<HidKey, Vec<HidInterface>> {
             DIGCF_PRESENT | DIGCF_DEVICEINTERFACE,
         )
     };
-    if hdev == INVALID_HANDLE_VALUE {
+    if hdev == INVALID_HDEVINFO {
         return map;
     }
 
@@ -227,7 +248,7 @@ fn get_serial(handle: HANDLE) -> Option<String> {
 fn get_report_descriptor(handle: HANDLE) -> Option<Vec<u8>> {
     // HidD_GetReportDescriptor requires the exact descriptor length.
     // We don't have the config descriptor for HID.sys devices, so probe sizes.
-    // The first size that succeeds gives us the correct (or close) descriptor.
+    // The first size that succeeds gives us the correct descriptor bytes.
     for &size in &[64usize, 128, 256, 512, 1024, 2048, 4096] {
         let mut buf = vec![0u8; size];
         let ok = unsafe {
