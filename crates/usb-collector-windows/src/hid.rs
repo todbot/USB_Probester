@@ -1,16 +1,20 @@
-//! Windows HID report descriptor collection via SetupDi + USB hub IOCTL.
+//! Windows HID report descriptor collection via SetupDi + HID preparsed data.
 //!
-//! Two-phase approach:
-//! 1. SetupDi enumerates all HID device interfaces (keyboards, mice, gamepads, …),
-//!    reads VID/PID/serial/interface-number, and obtains the CM DevInst.
-//! 2. For each HID device, walks the device tree (CM_Get_Parent) to find the parent
-//!    USB hub and port number, then sends
-//!    `IOCTL_USB_GET_DESCRIPTOR_FROM_NODE_CONNECTION` to the hub to retrieve the raw
-//!    HID report descriptor bytes.  Falls back to an empty descriptor on any failure
-//!    so the device still appears in the tree.
+//! SetupDi enumerates all HID device interfaces (keyboards, mice, gamepads, …);
+//! for each, opens the device, calls `HidD_GetPreparsedData`, then uses the
+//! public `HidP_Get*Caps` APIs to enumerate button and value capabilities.
+//! A synthetic HID report descriptor is reconstructed from those capabilities.
 //!
-//! Returns a `(vid, pid, serial) → Vec<HidInterface>` map so the caller can correlate
-//! entries with nusb-enumerated devices.
+//! **Limitations of the reconstructed descriptor:**
+//! - Not byte-for-byte identical to the device's original descriptor.
+//! - Vendor-specific items are absent (not exposed via HidP_ APIs).
+//! - Sub-collection nesting is flattened to a single Application collection.
+//! - Item ordering may differ from the original.
+//! - Despite these differences, the output is valid HID and fully parseable
+//!   by the hid-parser crate.
+//!
+//! Returns a `(vid, pid, serial) → Vec<HidInterface>` map that the caller can
+//! correlate with nusb-enumerated devices.
 
 #![cfg(target_os = "windows")]
 
@@ -20,23 +24,23 @@ use usb_types::HidInterface;
 use windows_sys::Win32::Devices::DeviceAndDriverInstallation::{
     SetupDiDestroyDeviceInfoList, SetupDiEnumDeviceInterfaces, SetupDiGetClassDevsW,
     SetupDiGetDeviceInterfaceDetailW, DIGCF_DEVICEINTERFACE, DIGCF_PRESENT, HDEVINFO,
-    SP_DEVINFO_DATA, SP_DEVICE_INTERFACE_DATA, SP_DEVICE_INTERFACE_DETAIL_DATA_W,
+    SP_DEVICE_INTERFACE_DATA, SP_DEVICE_INTERFACE_DETAIL_DATA_W,
 };
 use windows_sys::Win32::Devices::HumanInterfaceDevice::{
-    HidD_GetAttributes, HidD_GetSerialNumberString, HIDD_ATTRIBUTES,
+    HidD_FreePreparsedData, HidD_GetAttributes, HidD_GetPreparsedData, HidD_GetSerialNumberString,
+    HidP_GetButtonCaps, HidP_GetCaps, HidP_GetValueCaps, HIDD_ATTRIBUTES, HIDP_BUTTON_CAPS,
+    HIDP_CAPS, HIDP_STATUS_SUCCESS, HIDP_VALUE_CAPS, HidP_Feature, HidP_Input, HidP_Output,
+    PHIDP_PREPARSED_DATA,
 };
 use windows_sys::Win32::Foundation::{CloseHandle, HANDLE, INVALID_HANDLE_VALUE};
 use windows_sys::Win32::Storage::FileSystem::{
     CreateFileW, FILE_SHARE_READ, FILE_SHARE_WRITE, OPEN_EXISTING,
 };
-use windows_sys::Win32::System::IO::DeviceIoControl;
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 
 const GENERIC_READ: u32 = 0x80000000;
 const GENERIC_WRITE: u32 = 0x40000000;
-
-// HDEVINFO is isize; the failure sentinel for SetupDiGetClassDevsW is -1.
 const INVALID_HDEVINFO: HDEVINFO = -1isize;
 
 // {4D1E55B2-F16F-11CF-88CB-001111000030}
@@ -46,61 +50,6 @@ const GUID_DEVINTERFACE_HID: windows_sys::core::GUID = windows_sys::core::GUID {
     data3: 0x11CF,
     data4: [0x88, 0xCB, 0x00, 0x11, 0x11, 0x00, 0x00, 0x30],
 };
-
-// {F18A0E88-C30C-11D0-8815-00A0C906BED8}
-const GUID_DEVINTERFACE_USB_HUB: windows_sys::core::GUID = windows_sys::core::GUID {
-    data1: 0xF18A0E88,
-    data2: 0xC30C,
-    data3: 0x11D0,
-    data4: [0x88, 0x15, 0x00, 0xA0, 0xC9, 0x06, 0xBE, 0xD8],
-};
-
-// CTL_CODE(FILE_DEVICE_USB=0x22, 260, METHOD_BUFFERED=0, FILE_ANY_ACCESS=0)
-// = (0x22 << 16) | (260 << 2) | 0 = 0x00220410
-const IOCTL_USB_GET_DESCRIPTOR_FROM_NODE_CONNECTION: u32 = 0x00220410;
-
-// CM_DRP_ADDRESS: port number of the device on its parent hub (cfgmgr32.h, 0x1D).
-const CM_DRP_ADDRESS: u32 = 0x1D;
-const CR_SUCCESS: u32 = 0;
-const CM_GET_DEVICE_INTERFACE_LIST_PRESENT: u32 = 0;
-
-// Fixed header size of USB_DESCRIPTOR_REQUEST (ConnectionIndex + SetupPacket).
-const USB_REQ_HDR: usize = 12;
-
-// ── CM function declarations ────────────────────────────────────────────────────
-// cfgmgr32.dll is always present on Windows; declare manually to avoid needing
-// an additional windows-sys feature.
-
-#[link(name = "cfgmgr32", kind = "raw-dylib")]
-extern "system" {
-    fn CM_Get_Parent(pdnDevInst: *mut u32, dnDevInst: u32, ulFlags: u32) -> u32;
-
-    fn CM_Get_DevNode_Registry_PropertyW(
-        dnDevInst: u32,
-        ulProperty: u32,
-        pulRegDataType: *mut u32,
-        Buffer: *mut core::ffi::c_void,
-        pulLength: *mut u32,
-        ulFlags: u32,
-    ) -> u32;
-
-    fn CM_Get_Device_IDW(dnDevInst: u32, Buffer: *mut u16, BufferLen: u32, ulFlags: u32) -> u32;
-
-    fn CM_Get_Device_Interface_List_SizeW(
-        pulLen: *mut u32,
-        InterfaceClassGuid: *const windows_sys::core::GUID,
-        pDeviceID: *const u16,
-        ulFlags: u32,
-    ) -> u32;
-
-    fn CM_Get_Device_Interface_ListW(
-        InterfaceClassGuid: *const windows_sys::core::GUID,
-        pDeviceID: *const u16,
-        Buffer: *mut u16,
-        BufferLen: u32,
-        ulFlags: u32,
-    ) -> u32;
-}
 
 // ── Public types ───────────────────────────────────────────────────────────────
 
@@ -139,7 +88,7 @@ pub fn collect_hid_descriptors() -> HashMap<HidKey, Vec<HidInterface>> {
             )
         };
         if ok == 0 {
-            break; // ERROR_NO_MORE_ITEMS
+            break;
         }
 
         if let Some((key, iface)) = process_interface(hdev, &mut iface_data) {
@@ -159,7 +108,7 @@ fn process_interface(
     hdev: HDEVINFO,
     iface_data: &mut SP_DEVICE_INTERFACE_DATA,
 ) -> Option<(HidKey, HidInterface)> {
-    let (path, dev_inst) = get_device_path_and_instance(hdev, iface_data)?;
+    let path = get_device_path(hdev, iface_data)?;
     let interface_number = parse_interface_number(&path);
 
     let handle = open_hid(&path);
@@ -167,16 +116,16 @@ fn process_interface(
         return None;
     }
 
-    let result = read_hid(handle, interface_number, dev_inst);
+    let result = read_hid(handle, interface_number);
     unsafe { CloseHandle(handle) };
     result
 }
 
-fn get_device_path_and_instance(
+fn get_device_path(
     hdev: HDEVINFO,
     iface_data: &mut SP_DEVICE_INTERFACE_DATA,
-) -> Option<(String, u32)> {
-    // First call: get required buffer size.
+) -> Option<String> {
+    // First call: query required buffer size.
     let mut required: u32 = 0;
     unsafe {
         SetupDiGetDeviceInterfaceDetailW(
@@ -198,10 +147,7 @@ fn get_device_path_and_instance(
         (*detail).cbSize = core::mem::size_of::<SP_DEVICE_INTERFACE_DETAIL_DATA_W>() as u32;
     }
 
-    // Second call: fill detail AND devinfo (for DevInst).
-    let mut devinfo: SP_DEVINFO_DATA = unsafe { core::mem::zeroed() };
-    devinfo.cbSize = core::mem::size_of::<SP_DEVINFO_DATA>() as u32;
-
+    // Second call: fill the detail buffer.
     let ok = unsafe {
         SetupDiGetDeviceInterfaceDetailW(
             hdev,
@@ -209,21 +155,19 @@ fn get_device_path_and_instance(
             detail,
             required,
             core::ptr::null_mut(),
-            &mut devinfo,
+            core::ptr::null_mut(), // DeviceInfoData not needed
         )
     };
     if ok == 0 {
         return None;
     }
 
-    let dev_inst = devinfo.DevInst;
-
     // DevicePath is null-terminated UTF-16 starting at byte offset 4.
     let path_ptr = unsafe { buf.as_ptr().add(4) as *const u16 };
     let path_len = (required as usize - 4) / 2;
     let slice = unsafe { core::slice::from_raw_parts(path_ptr, path_len) };
     let end = slice.iter().position(|&c| c == 0).unwrap_or(path_len);
-    Some((String::from_utf16_lossy(&slice[..end]), dev_inst))
+    Some(String::from_utf16_lossy(&slice[..end]))
 }
 
 fn parse_interface_number(path: &str) -> u8 {
@@ -255,7 +199,7 @@ fn open_hid(path: &str) -> HANDLE {
     if h != INVALID_HANDLE_VALUE {
         return h;
     }
-    // Some devices require read+write.
+    // Some devices require read+write access.
     unsafe {
         CreateFileW(
             wide.as_ptr(),
@@ -269,7 +213,7 @@ fn open_hid(path: &str) -> HANDLE {
     }
 }
 
-fn read_hid(handle: HANDLE, interface_number: u8, dev_inst: u32) -> Option<(HidKey, HidInterface)> {
+fn read_hid(handle: HANDLE, interface_number: u8) -> Option<(HidKey, HidInterface)> {
     let mut attrs: HIDD_ATTRIBUTES = unsafe { core::mem::zeroed() };
     attrs.Size = core::mem::size_of::<HIDD_ATTRIBUTES>() as u32;
     if unsafe { HidD_GetAttributes(handle, &mut attrs) } == 0 {
@@ -280,9 +224,7 @@ fn read_hid(handle: HANDLE, interface_number: u8, dev_inst: u32) -> Option<(HidK
     let pid = attrs.ProductID;
     let serial = get_serial(handle);
 
-    // Try hub IOCTL; fall back to empty bytes so the interface still appears.
-    let raw = get_report_descriptor_via_hub(dev_inst, interface_number)
-        .unwrap_or_default();
+    let raw = reconstruct_descriptor(handle).unwrap_or_default();
     let parsed = if raw.is_empty() { None } else { hid_parser::parse(&raw).ok() };
 
     Some((
@@ -308,186 +250,207 @@ fn get_serial(handle: HANDLE) -> Option<String> {
     if s.is_empty() { None } else { Some(s) }
 }
 
-// ── Hub IOCTL path ─────────────────────────────────────────────────────────────
+// ── Descriptor reconstruction via preparsed data ────────────────────────────────
 
-fn get_report_descriptor_via_hub(hid_dev_inst: u32, interface_num: u8) -> Option<Vec<u8>> {
-    let (hub_path, port) = find_hub_and_port(hid_dev_inst)?;
-
-    // Step 1: get HID class descriptor (type 0x21, 9 bytes) to read wDescriptorLength.
-    let hid_cls = hub_request(&hub_path, port, 0x21, interface_num as u16, 9)?;
-    if hid_cls.len() < 9 {
+/// Calls HidD_GetPreparsedData and reconstructs a synthetic descriptor from
+/// the public HidP_ capability APIs.
+fn reconstruct_descriptor(handle: HANDLE) -> Option<Vec<u8>> {
+    let mut pp_data: PHIDP_PREPARSED_DATA = 0;
+    if unsafe { HidD_GetPreparsedData(handle, &mut pp_data) } == 0 || pp_data == 0 {
         return None;
     }
-    // HID class descriptor layout (0-indexed):
-    //   [0] bLength  [1] bDescriptorType=0x21  [2..3] bcdHID
-    //   [4] bCountryCode  [5] bNumDescriptors
-    //   [6] bDescriptorType (for report = 0x22)  [7..8] wDescriptorLength LE
-    let report_len = u16::from_le_bytes([hid_cls[7], hid_cls[8]]);
-    if report_len == 0 {
-        return None;
-    }
-
-    // Step 2: get the HID report descriptor (type 0x22).
-    hub_request(&hub_path, port, 0x22, interface_num as u16, report_len)
-}
-
-/// Walk up the device tree from the HID node to find the USB device's port
-/// number on its parent hub, then return the hub's device interface path.
-///
-/// Strategy: at each level, try `probe_hub_interface_path` on the *parent*.
-/// When it returns Some, the parent is a USB hub and the current node is the
-/// USB device sitting on it; CM_DRP_ADDRESS on current gives the port number.
-fn find_hub_and_port(hid_dev_inst: u32) -> Option<(String, u32)> {
-    let mut current = hid_dev_inst;
-
-    for _ in 0..6 {
-        let mut parent: u32 = 0;
-        if unsafe { CM_Get_Parent(&mut parent, current, 0) } != CR_SUCCESS {
-            return None;
-        }
-
-        if let Some(hub_path) = probe_hub_interface_path(parent) {
-            // parent is the hub; get port from current's CM_DRP_ADDRESS.
-            let port = cm_address(current)?;
-            return Some((hub_path, port));
-        }
-
-        current = parent;
-    }
-    None
-}
-
-fn cm_address(inst: u32) -> Option<u32> {
-    let mut addr: u32 = 0;
-    let mut size: u32 = 4;
-    let cr = unsafe {
-        CM_Get_DevNode_Registry_PropertyW(
-            inst,
-            CM_DRP_ADDRESS,
-            core::ptr::null_mut(),
-            &mut addr as *mut u32 as *mut core::ffi::c_void,
-            &mut size,
-            0,
-        )
-    };
-    if cr == CR_SUCCESS && addr > 0 { Some(addr) } else { None }
-}
-
-/// Try to get the device interface path for a node as a USB hub.
-/// Returns None silently if the node is not a hub — used speculatively during tree walk.
-fn probe_hub_interface_path(inst: u32) -> Option<String> {
-    let mut id_buf = [0u16; 512];
-    let cr = unsafe {
-        CM_Get_Device_IDW(inst, id_buf.as_mut_ptr(), id_buf.len() as u32, 0)
-    };
-    if cr != CR_SUCCESS {
-        return None;
-    }
-
-    let id_end = id_buf.iter().position(|&c| c == 0).unwrap_or(id_buf.len());
-    let mut id_wide: Vec<u16> = id_buf[..id_end].to_vec();
-    id_wide.push(0);
-
-    let mut list_size: u32 = 0;
-    let cr = unsafe {
-        CM_Get_Device_Interface_List_SizeW(
-            &mut list_size,
-            &GUID_DEVINTERFACE_USB_HUB,
-            id_wide.as_ptr(),
-            CM_GET_DEVICE_INTERFACE_LIST_PRESENT,
-        )
-    };
-    if cr != CR_SUCCESS || list_size <= 1 {
-        return None;
-    }
-
-    let mut list_buf: Vec<u16> = vec![0u16; list_size as usize];
-    let cr = unsafe {
-        CM_Get_Device_Interface_ListW(
-            &GUID_DEVINTERFACE_USB_HUB,
-            id_wide.as_ptr(),
-            list_buf.as_mut_ptr(),
-            list_size,
-            CM_GET_DEVICE_INTERFACE_LIST_PRESENT,
-        )
-    };
-    if cr != CR_SUCCESS {
-        return None;
-    }
-
-    let path_end = list_buf.iter().position(|&c| c == 0).unwrap_or(list_buf.len());
-    if path_end == 0 {
-        return None;
-    }
-    Some(String::from_utf16_lossy(&list_buf[..path_end]))
-}
-
-/// Send a USB GET_DESCRIPTOR request to the hub for the device on `port`.
-/// Returns the descriptor bytes (without the USB_DESCRIPTOR_REQUEST header).
-fn hub_request(hub_path: &str, port: u32, desc_type: u8, w_index: u16, w_length: u16) -> Option<Vec<u8>> {
-    let wide: Vec<u16> = hub_path.encode_utf16().chain(core::iter::once(0)).collect();
-    let handle = unsafe {
-        CreateFileW(
-            wide.as_ptr(),
-            GENERIC_WRITE,
-            FILE_SHARE_WRITE,
-            core::ptr::null(),
-            OPEN_EXISTING,
-            0,
-            core::ptr::null_mut(),
-        )
-    };
-    if handle == INVALID_HANDLE_VALUE {
-        return None;
-    }
-
-    let result = send_hub_descriptor_request(handle, port, desc_type, w_index, w_length);
-    unsafe { CloseHandle(handle) };
+    let result = build_from_caps(pp_data);
+    unsafe { HidD_FreePreparsedData(pp_data) };
     result
 }
 
-fn send_hub_descriptor_request(
-    hub: HANDLE,
-    port: u32,
-    desc_type: u8,
-    w_index: u16,
-    w_length: u16,
-) -> Option<Vec<u8>> {
-    // USB_DESCRIPTOR_REQUEST layout (12-byte fixed header + variable Data):
-    //   [0..4]  ConnectionIndex (u32 LE) = port number
-    //   [4]     bmRequest  = 0x81 (D→H | Standard | Interface)
-    //   [5]     bRequest   = 0x06 (GET_DESCRIPTOR)
-    //   [6..8]  wValue     = (desc_type << 8) | index (LE)
-    //   [8..10] wIndex     = interface number (LE)
-    //   [10..12] wLength   = max bytes to return (LE)
-    //   [12..]  Data[]     (output filled by driver)
-    let total = USB_REQ_HDR + w_length as usize;
-    let mut buf = vec![0u8; total];
+fn build_from_caps(pp: PHIDP_PREPARSED_DATA) -> Option<Vec<u8>> {
+    let mut caps: HIDP_CAPS = unsafe { core::mem::zeroed() };
+    if unsafe { HidP_GetCaps(pp, &mut caps) } != HIDP_STATUS_SUCCESS {
+        return None;
+    }
 
-    buf[0..4].copy_from_slice(&port.to_le_bytes());
-    buf[4] = 0x81; // D→H | Standard | Interface
-    buf[5] = 0x06; // GET_DESCRIPTOR
-    buf[6..8].copy_from_slice(&((desc_type as u16) << 8).to_le_bytes());
-    buf[8..10].copy_from_slice(&w_index.to_le_bytes());
-    buf[10..12].copy_from_slice(&w_length.to_le_bytes());
+    let mut buf = Vec::<u8>::new();
 
-    let mut bytes_returned: u32 = 0;
-    let ok = unsafe {
-        DeviceIoControl(
-            hub,
-            IOCTL_USB_GET_DESCRIPTOR_FROM_NODE_CONNECTION,
-            buf.as_ptr() as *const core::ffi::c_void,
-            total as u32,
-            buf.as_mut_ptr() as *mut core::ffi::c_void,
-            total as u32,
-            &mut bytes_returned,
-            core::ptr::null_mut(),
-        )
-    };
+    // Device-level usage wrapper
+    push_usage_page(&mut buf, caps.UsagePage);
+    push_usage(&mut buf, caps.Usage);
+    buf.extend_from_slice(&[0xA1, 0x01]); // Collection (Application)
 
-    if ok != 0 && bytes_returned as usize > USB_REQ_HDR {
-        Some(buf[USB_REQ_HDR..bytes_returned as usize].to_vec())
+    for &report_type in &[HidP_Input, HidP_Output, HidP_Feature] {
+        let (n_btn, n_val) = match report_type {
+            t if t == HidP_Input  => (caps.NumberInputButtonCaps,   caps.NumberInputValueCaps),
+            t if t == HidP_Output => (caps.NumberOutputButtonCaps,  caps.NumberOutputValueCaps),
+            _                     => (caps.NumberFeatureButtonCaps, caps.NumberFeatureValueCaps),
+        };
+
+        // HID main-item prefix byte: tag=Input(8)/Output(9)/Feature(11), type=Main(0), size=1byte
+        let main_prefix: u8 = match report_type {
+            t if t == HidP_Input  => 0x81,
+            t if t == HidP_Output => 0x91,
+            _                     => 0xB1,
+        };
+
+        let btn_caps = fetch_button_caps(pp, report_type, n_btn);
+        let val_caps = fetch_value_caps(pp, report_type, n_val);
+
+        let mut last_rid: Option<u8> = None;
+
+        for bc in &btn_caps {
+            if bc.ReportID != 0 && Some(bc.ReportID) != last_rid {
+                buf.extend_from_slice(&[0x85, bc.ReportID]); // Report ID
+                last_rid = Some(bc.ReportID);
+            }
+            push_usage_page(&mut buf, bc.UsagePage);
+
+            // Per MSDN, for IsRange=TRUE the count is UsageMax-UsageMin+1.
+            // For IsRange=FALSE, ReportCount is 1 (or >1 only for a usage array).
+            let count: u16 = if bc.IsRange != 0 {
+                let r = unsafe { bc.Anonymous.Range };
+                push_usage_min(&mut buf, r.UsageMin);
+                push_usage_max(&mut buf, r.UsageMax);
+                r.UsageMax.saturating_sub(r.UsageMin).saturating_add(1)
+            } else {
+                let nr = unsafe { bc.Anonymous.NotRange };
+                push_usage(&mut buf, nr.Usage);
+                bc.ReportCount.max(1)
+            };
+
+            buf.extend_from_slice(&[0x15, 0x00]); // Logical Minimum (0)
+            buf.extend_from_slice(&[0x25, 0x01]); // Logical Maximum (1)
+            buf.extend_from_slice(&[0x75, 0x01]); // Report Size (1 bit per button)
+            push_count(&mut buf, count);
+            buf.extend_from_slice(&[main_prefix, (bc.BitField & 0xFF) as u8]);
+        }
+
+        for vc in &val_caps {
+            if vc.ReportID != 0 && Some(vc.ReportID) != last_rid {
+                buf.extend_from_slice(&[0x85, vc.ReportID]); // Report ID
+                last_rid = Some(vc.ReportID);
+            }
+            push_usage_page(&mut buf, vc.UsagePage);
+
+            if vc.IsRange != 0 {
+                let r = unsafe { vc.Anonymous.Range };
+                push_usage_min(&mut buf, r.UsageMin);
+                push_usage_max(&mut buf, r.UsageMax);
+            } else {
+                let nr = unsafe { vc.Anonymous.NotRange };
+                push_usage(&mut buf, nr.Usage);
+            }
+
+            push_logical_min(&mut buf, vc.LogicalMin);
+            push_logical_max(&mut buf, vc.LogicalMax);
+            push_size(&mut buf, vc.BitSize);
+            push_count(&mut buf, vc.ReportCount);
+            buf.extend_from_slice(&[main_prefix, (vc.BitField & 0xFF) as u8]);
+        }
+    }
+
+    buf.push(0xC0); // End Collection
+
+    // 7 = minimum wrapper with no caps: UsagePage(2)+Usage(2)+Collection(2)+EndCollection(1)
+    if buf.len() <= 7 { None } else { Some(buf) }
+}
+
+fn fetch_button_caps(pp: PHIDP_PREPARSED_DATA, report_type: i32, n: u16) -> Vec<HIDP_BUTTON_CAPS> {
+    if n == 0 {
+        return Vec::new();
+    }
+    let mut caps: Vec<HIDP_BUTTON_CAPS> = vec![unsafe { core::mem::zeroed() }; n as usize];
+    let mut len = n;
+    unsafe { HidP_GetButtonCaps(report_type, caps.as_mut_ptr(), &mut len, pp) };
+    caps.truncate(len as usize);
+    caps
+}
+
+fn fetch_value_caps(pp: PHIDP_PREPARSED_DATA, report_type: i32, n: u16) -> Vec<HIDP_VALUE_CAPS> {
+    if n == 0 {
+        return Vec::new();
+    }
+    let mut caps: Vec<HIDP_VALUE_CAPS> = vec![unsafe { core::mem::zeroed() }; n as usize];
+    let mut len = n;
+    unsafe { HidP_GetValueCaps(report_type, caps.as_mut_ptr(), &mut len, pp) };
+    caps.truncate(len as usize);
+    caps
+}
+
+// ── HID short-item encoding helpers ───────────────────────────────────────────
+
+fn push_usage_page(buf: &mut Vec<u8>, page: u16) {
+    if page <= 0xFF {
+        buf.extend_from_slice(&[0x05, page as u8]);
     } else {
-        None
+        buf.push(0x06);
+        buf.extend_from_slice(&page.to_le_bytes());
+    }
+}
+
+fn push_usage(buf: &mut Vec<u8>, usage: u16) {
+    if usage <= 0xFF {
+        buf.extend_from_slice(&[0x09, usage as u8]);
+    } else {
+        buf.push(0x0A);
+        buf.extend_from_slice(&usage.to_le_bytes());
+    }
+}
+
+fn push_usage_min(buf: &mut Vec<u8>, usage: u16) {
+    if usage <= 0xFF {
+        buf.extend_from_slice(&[0x19, usage as u8]);
+    } else {
+        buf.push(0x1A);
+        buf.extend_from_slice(&usage.to_le_bytes());
+    }
+}
+
+fn push_usage_max(buf: &mut Vec<u8>, usage: u16) {
+    if usage <= 0xFF {
+        buf.extend_from_slice(&[0x29, usage as u8]);
+    } else {
+        buf.push(0x2A);
+        buf.extend_from_slice(&usage.to_le_bytes());
+    }
+}
+
+fn push_logical_min(buf: &mut Vec<u8>, val: i32) {
+    if val >= -128 && val <= 127 {
+        buf.extend_from_slice(&[0x15, val as i8 as u8]);
+    } else if val >= -32768 && val <= 32767 {
+        buf.push(0x16);
+        buf.extend_from_slice(&(val as i16).to_le_bytes());
+    } else {
+        buf.push(0x17);
+        buf.extend_from_slice(&val.to_le_bytes());
+    }
+}
+
+fn push_logical_max(buf: &mut Vec<u8>, val: i32) {
+    if val >= -128 && val <= 127 {
+        buf.extend_from_slice(&[0x25, val as i8 as u8]);
+    } else if val >= -32768 && val <= 32767 {
+        buf.push(0x26);
+        buf.extend_from_slice(&(val as i16).to_le_bytes());
+    } else {
+        buf.push(0x27);
+        buf.extend_from_slice(&val.to_le_bytes());
+    }
+}
+
+fn push_size(buf: &mut Vec<u8>, size: u16) {
+    if size <= 0xFF {
+        buf.extend_from_slice(&[0x75, size as u8]);
+    } else {
+        buf.push(0x76);
+        buf.extend_from_slice(&size.to_le_bytes());
+    }
+}
+
+fn push_count(buf: &mut Vec<u8>, count: u16) {
+    if count <= 0xFF {
+        buf.extend_from_slice(&[0x95, count as u8]);
+    } else {
+        buf.push(0x96);
+        buf.extend_from_slice(&count.to_le_bytes());
     }
 }
