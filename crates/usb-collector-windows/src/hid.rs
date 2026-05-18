@@ -18,7 +18,7 @@ use windows_sys::Win32::Devices::DeviceAndDriverInstallation::{
 use windows_sys::Win32::Devices::HumanInterfaceDevice::{
     HidD_GetAttributes, HidD_GetSerialNumberString, HIDD_ATTRIBUTES,
 };
-use windows_sys::Win32::Foundation::{CloseHandle, HANDLE, INVALID_HANDLE_VALUE};
+use windows_sys::Win32::Foundation::{CloseHandle, GetLastError, HANDLE, INVALID_HANDLE_VALUE};
 use windows_sys::Win32::Storage::FileSystem::{
     CreateFileW, FILE_SHARE_READ, FILE_SHARE_WRITE, OPEN_EXISTING,
 };
@@ -214,8 +214,10 @@ fn read_hid(handle: HANDLE, interface_number: u8) -> Option<(HidKey, HidInterfac
     let pid = attrs.ProductID;
     let serial = get_serial(handle);
 
-    let raw = get_report_descriptor(handle)?;
-    let parsed = hid_parser::parse(&raw).ok();
+    // Descriptor fetch may fail (see get_report_descriptor); still emit the
+    // HidInterface so the device appears in the tree even without descriptor bytes.
+    let raw = get_report_descriptor(handle).unwrap_or_default();
+    let parsed = if raw.is_empty() { None } else { hid_parser::parse(&raw).ok() };
 
     Some((
         (vid, pid, serial),
@@ -241,9 +243,10 @@ fn get_serial(handle: HANDLE) -> Option<String> {
 }
 
 fn get_report_descriptor(handle: HANDLE) -> Option<Vec<u8>> {
-    // IOCTL_HID_GET_REPORT_DESCRIPTOR is METHOD_NEITHER; the HID class driver
-    // writes directly to our buffer and returns the actual byte count.
-    // 4096 bytes comfortably exceeds any real HID descriptor.
+    // IOCTL_HID_GET_REPORT_DESCRIPTOR (0x000b0003) is technically a kernel-to-
+    // minidriver IOCTL, but hidclass.sys may respond to it from user mode too.
+    // If it fails we log the Windows error code and return None; the caller
+    // falls back to an empty descriptor so the device still appears in the tree.
     let mut buf = vec![0u8; 4096];
     let mut bytes_returned: u32 = 0;
     let ok = unsafe {
@@ -262,6 +265,8 @@ fn get_report_descriptor(handle: HANDLE) -> Option<Vec<u8>> {
         buf.truncate(bytes_returned as usize);
         Some(buf)
     } else {
+        let err = unsafe { GetLastError() };
+        eprintln!("note: HID report descriptor IOCTL failed (ok={ok}, bytes={bytes_returned}, err={err:#010x})");
         None
     }
 }
