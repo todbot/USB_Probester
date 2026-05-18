@@ -25,7 +25,7 @@ use windows_sys::Win32::Devices::DeviceAndDriverInstallation::{
 use windows_sys::Win32::Devices::HumanInterfaceDevice::{
     HidD_GetAttributes, HidD_GetSerialNumberString, HIDD_ATTRIBUTES,
 };
-use windows_sys::Win32::Foundation::{CloseHandle, GetLastError, HANDLE, INVALID_HANDLE_VALUE};
+use windows_sys::Win32::Foundation::{CloseHandle, HANDLE, INVALID_HANDLE_VALUE};
 use windows_sys::Win32::Storage::FileSystem::{
     CreateFileW, FILE_SHARE_READ, FILE_SHARE_WRITE, OPEN_EXISTING,
 };
@@ -488,11 +488,6 @@ fn send_hub_descriptor_request(
     if ok != 0 && bytes_returned as usize > USB_REQ_HDR {
         Some(buf[USB_REQ_HDR..bytes_returned as usize].to_vec())
     } else {
-        let err = unsafe { GetLastError() };
-        eprintln!(
-            "note: hub descriptor request failed (type={desc_type:#04x}, port={port}, \
-             ok={ok}, bytes={bytes_returned}, err={err:#010x})"
-        );
         None
     }
 }

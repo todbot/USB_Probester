@@ -1,5 +1,8 @@
 # Project: USBProbester
 
+resume windows foolery: resume this:claude --resume f09ac640-dfb0-4505-bddd-ba97941ae0c0
+
+
 Cross-platform Tauri app recreating Apple's old `USB Prober.app`:
 hierarchical USB device tree with parsed Device descriptors,
 Configuration descriptors, and HID Report descriptors.
@@ -108,11 +111,21 @@ npm run clean
   usbstor, CDC, etc. — their class driver blocks nusb from opening them
 - `location_id` is `"{vid:04x}:{pid:04x}:{serial}"` or `"…:{port.chain}"` if no serial
 - `bus_number` is always 0 (Windows doesn't expose it the same way)
-- HID report descriptors collected via SetupDi + `HidD_GetReportDescriptor` in `src/hid.rs`;
-  two-pass strategy mirrors the macOS collector (nusb pass + HID pass keyed by vid/pid/serial)
+- HID report descriptors: two-pass strategy in `src/hid.rs` (mirrors macOS collector):
+  - Pass 1: SetupDi enumerates all HID device interfaces; keyed by (vid, pid, serial)
+  - Pass 2: For each HID device, walks CM device tree to find parent USB hub + port,
+    then sends `IOCTL_USB_GET_DESCRIPTOR_FROM_NODE_CONNECTION` to the hub:
+    first type=0x21 (HID class descriptor, 9 bytes) to read wDescriptorLength,
+    then type=0x22 (report descriptor) with that exact length
+  - Falls back to nusb control transfer (claim_interface + control_in) for WinUSB devices
+    where the hub IOCTL is unavailable
+- Hub IOCTL requires a real hardware USB hub; KVM-virtual hubs (e.g. VID 203A/FFFE)
+  reject class-specific descriptor requests with ERROR_GEN_FAILURE (0x1f)
 - Full config descriptor access for non-WinUSB devices needs `IOCTL_USB_GET_DESCRIPTOR_FROM_NODE_CONNECTION`
 
 ## Current focus
 
 All planned steps done. Remaining work:
 - Windows full config descriptor access for non-WinUSB devices (hub IOCTLs)
+- Windows HID report descriptor: code is complete and correct; blocked by KVM virtual
+  hub in current test environment — requires real hardware hub to verify
