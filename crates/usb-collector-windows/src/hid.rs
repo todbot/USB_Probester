@@ -311,21 +311,39 @@ fn get_serial(handle: HANDLE) -> Option<String> {
 // ── Hub IOCTL path ─────────────────────────────────────────────────────────────
 
 fn get_report_descriptor_via_hub(hid_dev_inst: u32, interface_num: u8) -> Option<Vec<u8>> {
-    let (hub_path, port) = find_hub_and_port(hid_dev_inst)?;
+    let (hub_path, port) = match find_hub_and_port(hid_dev_inst) {
+        Some(v) => v,
+        None => {
+            eprintln!("note: hid[inst={hid_dev_inst}] find_hub_and_port failed");
+            return None;
+        }
+    };
+    eprintln!("note: hid[inst={hid_dev_inst}] hub={hub_path} port={port}");
 
     // Step 1: get HID class descriptor (type 0x21, 9 bytes) to read wDescriptorLength.
-    let hid_cls = hub_request(&hub_path, port, 0x21, interface_num as u16, 9)?;
+    let hid_cls = match hub_request(&hub_path, port, 0x21, interface_num as u16, 9) {
+        Some(v) => v,
+        None => {
+            eprintln!("note: hid[inst={hid_dev_inst}] HID class descriptor (0x21) request failed");
+            return None;
+        }
+    };
     if hid_cls.len() < 9 {
+        eprintln!("note: hid[inst={hid_dev_inst}] HID class descriptor too short ({})", hid_cls.len());
         return None;
     }
+    eprintln!("note: hid[inst={hid_dev_inst}] HID class desc bytes: {:02x?}", &hid_cls[..hid_cls.len().min(9)]);
+
     // HID class descriptor layout (0-indexed):
     //   [0] bLength  [1] bDescriptorType=0x21  [2..3] bcdHID
     //   [4] bCountryCode  [5] bNumDescriptors
     //   [6] bDescriptorType (for report = 0x22)  [7..8] wDescriptorLength LE
     let report_len = u16::from_le_bytes([hid_cls[7], hid_cls[8]]);
     if report_len == 0 {
+        eprintln!("note: hid[inst={hid_dev_inst}] wDescriptorLength=0, giving up");
         return None;
     }
+    eprintln!("note: hid[inst={hid_dev_inst}] report descriptor length={report_len}");
 
     // Step 2: get the HID report descriptor (type 0x22).
     hub_request(&hub_path, port, 0x22, interface_num as u16, report_len)
@@ -361,14 +379,21 @@ fn find_hub_and_port(hid_dev_inst: u32) -> Option<(String, u32)> {
             // `parent` is the USB device on the hub at port `addr`.
             let mut hub_inst: u32 = 0;
             if unsafe { CM_Get_Parent(&mut hub_inst, parent, 0) } != CR_SUCCESS {
+                eprintln!("note: CM_Get_Parent(hub) failed for parent={parent}");
                 return None;
             }
-            let hub_path = get_hub_interface_path(hub_inst)?;
-            return Some((hub_path, addr));
+            match get_hub_interface_path(hub_inst) {
+                Some(path) => return Some((path, addr)),
+                None => {
+                    eprintln!("note: get_hub_interface_path failed for hub_inst={hub_inst}");
+                    return None;
+                }
+            }
         }
 
         current = parent;
     }
+    eprintln!("note: find_hub_and_port: exhausted 4-level walk without finding CM_DRP_ADDRESS");
     None
 }
 
@@ -441,6 +466,8 @@ fn hub_request(hub_path: &str, port: u32, desc_type: u8, w_index: u16, w_length:
         )
     };
     if handle == INVALID_HANDLE_VALUE {
+        let err = unsafe { GetLastError() };
+        eprintln!("note: hub CreateFileW failed for {hub_path} err={err:#010x}");
         return None;
     }
 
