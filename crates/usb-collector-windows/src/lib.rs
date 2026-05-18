@@ -264,14 +264,7 @@ fn fill_hid_from_device(
             let raw = candidate_inums
                 .iter()
                 .find_map(|&claim_inum| {
-                    let claim_result = device.claim_interface(claim_inum).wait();
-                    let h = match claim_result {
-                        Ok(h) => h,
-                        Err(e) => {
-                            eprintln!("fill_hid: inum={inum} claim_inum={claim_inum} claim FAILED: {e}");
-                            return None;
-                        }
-                    };
+                    let h = device.claim_interface(claim_inum).wait().ok()?;
                     let bytes = h
                         .control_in(
                             ControlIn {
@@ -286,7 +279,6 @@ fn fill_hid_from_device(
                         )
                         .wait()
                         .unwrap_or_default();
-                    eprintln!("fill_hid: inum={inum} claim_inum={claim_inum} control_in bytes={}", bytes.len());
                     if bytes.is_empty() { None } else { Some(bytes) }
                 })
                 .unwrap_or_default();
