@@ -185,6 +185,12 @@ fn build_from_open(
         })
         .collect();
 
+    // For devices that nusb can open (WinUSB / virtual), fetch HID report descriptors
+    // via control transfer — more reliable than hub IOCTL for these devices.
+    // The hub-IOCTL pass (hid.rs) already handled real HID.sys devices; only use
+    // this path to fill in interfaces where that pass returned empty bytes.
+    let hid_interfaces = fill_hid_from_device(device, &configurations, hid_interfaces);
+
     Ok(UsbDevice {
         location_id: loc,
         bus_number: 0,
@@ -196,6 +202,77 @@ fn build_from_open(
         hid_interfaces,
         children: vec![],
     })
+}
+
+/// For devices that nusb can open, supplement the hid_map entries (which may have
+/// empty `raw_report_descriptor` if the hub IOCTL path failed) by fetching the
+/// report descriptor via a standard control transfer on the open device handle.
+/// Entries already populated by hid.rs (non-empty bytes) are kept as-is.
+fn fill_hid_from_device(
+    device: &nusb::Device,
+    configurations: &[ConfigDescriptor],
+    mut existing: Vec<HidInterface>,
+) -> Vec<HidInterface> {
+    use nusb::transfer::{ControlIn, ControlType, Recipient};
+    use std::time::Duration;
+
+    // Build set of interface numbers that already have descriptor bytes.
+    let have: std::collections::HashSet<u8> = existing
+        .iter()
+        .filter(|h| !h.raw_report_descriptor.is_empty())
+        .map(|h| h.interface_number)
+        .collect();
+
+    let timeout = Duration::from_millis(500);
+
+    for cfg in configurations {
+        for iface in &cfg.interfaces {
+            if iface.b_interface_class != 3 {
+                continue; // not HID
+            }
+            let inum = iface.b_interface_number;
+            if have.contains(&inum) {
+                continue;
+            }
+
+            // data[5..7] = wDescriptorLength for HID class descriptor (type 0x21).
+            let report_len = iface
+                .class_descriptors
+                .iter()
+                .find(|d| d.descriptor_type == 0x21)
+                .filter(|d| d.data.len() >= 7)
+                .map(|d| u16::from_le_bytes([d.data[5], d.data[6]]))
+                .unwrap_or(0);
+            if report_len == 0 {
+                continue;
+            }
+
+            // Standard GET_DESCRIPTOR, recipient=Interface, descriptor type 0x22 (Report).
+            let raw = device
+                .control_in(ControlIn {
+                    control_type: ControlType::Standard,
+                    recipient: Recipient::Interface,
+                    request: 0x06,
+                    value: 0x2200,
+                    index: inum as u16,
+                    length: report_len,
+                })
+                .wait()
+                .unwrap_or_default();
+
+            let parsed = if raw.is_empty() { None } else { hid_parser::parse(&raw).ok() };
+
+            // Update an existing (empty) entry or push a new one.
+            if let Some(entry) = existing.iter_mut().find(|h| h.interface_number == inum) {
+                entry.raw_report_descriptor = raw;
+                entry.parsed = parsed;
+            } else {
+                existing.push(HidInterface { interface_number: inum, raw_report_descriptor: raw, parsed });
+            }
+        }
+    }
+
+    existing
 }
 
 // Fallback for devices whose class driver blocks nusb from opening them (HID,
