@@ -5,7 +5,8 @@ device descriptors, configuration descriptors, interface and endpoint
 details, and parsed HID report descriptors. Spiritual successor to Apple's
 __`USB Prober.app`__.
 
-Also ships a standalone CLI (`usb-probester-cli`) for text or JSON output.
+Also ships a [standalone CLI (`usb-probester-cli`)](#commandline-tool-usb-probester-cli) 
+for text or JSON output.
 
 <img src="./docs/screenshot1.png" width="700">
 
@@ -63,6 +64,33 @@ output format and correctness.
 
 ---
 
+### Commandline tool `usb-probester-cli`
+
+A standalone `usb-probester-cli` binary is included that doesn't require
+the GUI or a web runtime.
+
+```bash
+# Mac USB Prober-style text tree (default)
+usb-probester-cli
+
+# Pretty-printed JSON
+usb-probester-cli --format json
+
+# Filter by vendor ID and/or product ID (hex, with or without 0x prefix)
+usb-probester-cli --vid 27b8
+usb-probester-cli --vid 27b8 --pid 01ed
+usb-probester-cli --format json --vid 0x27b8
+
+# Omit USB hubs
+usb-probester-cli --hide-hubs
+
+# Build the standalone release binary, see below
+cargo build --release -p usb-cli
+# → target/release/usb-probester-cli
+```
+
+--- 
+
 ## Status
 
 | Platform | Collector        | HID Parser | GUI        | CLI        |
@@ -78,7 +106,6 @@ reconstructed descriptor is valid and parseable but is not byte-identical to
 the original: vendor-specific items are absent and sub-collection nesting is
 flattened. This works for all HID devices regardless of driver (HID.sys, WinUSB, etc.).
 
-
 ---
 
 ## Building
@@ -86,6 +113,12 @@ flattened. This works for all HID devices regardless of driver (HID.sys, WinUSB,
 This app is built with [Tauri v2](https://tauri.app)
 (Rust backend, React/TypeScript frontend), using the [`nusb`](https://docs.rs/nusb/latest/nusb/)
 Rust library for most USB data collection but a few OS-specific tricks where warranted. 
+
+If you're unfarmiliar with Tauri, this app requires the following tools need to be installed: 
+
+- **Rust** — [rustup.rs](https://rustup.rs)
+- **Node.js** — v18 or later [nodejs.org](https://nodejs.org)
+- **Tauri CLI** — installed via `npm install`
 
 This is a pretty standard Tauri2 app with local Rust crates.
 If you're familiar with that, building this app should be familiar. 
@@ -108,13 +141,6 @@ cargo build --release -p usb-cli
 ./target/release/usb-probester-cli
 
 ```
-
-If you're unfarmiliar with Tauri, this app requires the following tools need to be installed: 
-
-- **Rust** — [rustup.rs](https://rustup.rs)
-- **Node.js** — v18 or later [nodejs.org](https://nodejs.org)
-- **Tauri CLI** — installed via `npm install`
-
 ### OS-specific requirements:
 
 - Linux: 
@@ -133,46 +159,25 @@ If you're unfarmiliar with Tauri, this app requires the following tools need to 
   (the default from rustup on Windows) — the MinGW/GNU toolchain does not work
   with Tauri. WebView2 is pre-installed on Windows 11.
 
+  - *Windows cross-compilation note:* if building on an ARM Windows machine and
+    targeting x86_64 machines, add the target and build explicitly:
 
-### Commandline tool `usb-probester-cli`
+    ```
+    rustup target add x86_64-pc-windows-msvc
+    cargo build --release -p usb-cli --target x86_64-pc-windows-msvc
+    # → target\x86_64-pc-windows-msvc\release\usb-probester-cli.exe
+    ```
 
-A standalone `usb-probester-cli` binary is included that doesn't require
-the GUI or a web runtime:
+- MacOS: 
 
-```bash
-# Mac USB Prober-style text tree (default)
-cargo run -p usb-cli
+  - If you build by hand, you probably have an unsigned binary, to fix that, 
+    clear the quarantine attribute:
 
-# Pretty-printed JSON
-cargo run -p usb-cli -- --format json
+    ```bash
+    xattr -cr target/release/usb-probester-cli
+    ```
 
-# Filter by vendor ID and/or product ID (hex, with or without 0x prefix)
-cargo run -p usb-cli -- --vid 27b8
-cargo run -p usb-cli -- --vid 27b8 --pid 4444
-cargo run -p usb-cli -- --format json --vid 0x27b8
-
-# Omit USB hubs
-cargo run -p usb-cli -- --hide-hubs
-
-# Build a standalone release binary
-cargo build --release -p usb-cli
-# → target/release/usb-probester-cli
-```
-
-*macOS note:* to run an unsigned binary, clear the quarantine attribute:
-
-```bash
-xattr -cr target/release/usb-probester-cli
-```
-
-*Windows cross-compilation note:* if building on an ARM Windows machine and
-targeting x86_64 machines, add the target and build explicitly:
-
-```
-rustup target add x86_64-pc-windows-msvc
-cargo build --release -p usb-cli --target x86_64-pc-windows-msvc
-# → target\x86_64-pc-windows-msvc\release\usb-probester-cli.exe
-```
+--- 
 
 ### Workspace layout
 
