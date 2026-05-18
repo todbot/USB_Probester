@@ -279,18 +279,11 @@ fn read_hid(handle: HANDLE, interface_number: u8, dev_inst: u32) -> Option<(HidK
     let vid = attrs.VendorID;
     let pid = attrs.ProductID;
     let serial = get_serial(handle);
-    eprintln!(
-        "note: hid[inst={dev_inst}] key=({vid:04x},{pid:04x},{serial:?}) iface={interface_number}"
-    );
 
     // Try hub IOCTL; fall back to empty bytes so the interface still appears.
     let raw = get_report_descriptor_via_hub(dev_inst, interface_number)
         .unwrap_or_default();
     let parsed = if raw.is_empty() { None } else { hid_parser::parse(&raw).ok() };
-    eprintln!(
-        "note: hid[inst={dev_inst}] descriptor bytes={}",
-        raw.len()
-    );
 
     Some((
         (vid, pid, serial),
@@ -318,39 +311,21 @@ fn get_serial(handle: HANDLE) -> Option<String> {
 // ── Hub IOCTL path ─────────────────────────────────────────────────────────────
 
 fn get_report_descriptor_via_hub(hid_dev_inst: u32, interface_num: u8) -> Option<Vec<u8>> {
-    let (hub_path, port) = match find_hub_and_port(hid_dev_inst) {
-        Some(v) => v,
-        None => {
-            eprintln!("note: hid[inst={hid_dev_inst}] find_hub_and_port failed");
-            return None;
-        }
-    };
-    eprintln!("note: hid[inst={hid_dev_inst}] hub={hub_path} port={port}");
+    let (hub_path, port) = find_hub_and_port(hid_dev_inst)?;
 
     // Step 1: get HID class descriptor (type 0x21, 9 bytes) to read wDescriptorLength.
-    let hid_cls = match hub_request(&hub_path, port, 0x21, interface_num as u16, 9) {
-        Some(v) => v,
-        None => {
-            eprintln!("note: hid[inst={hid_dev_inst}] HID class descriptor (0x21) request failed");
-            return None;
-        }
-    };
+    let hid_cls = hub_request(&hub_path, port, 0x21, interface_num as u16, 9)?;
     if hid_cls.len() < 9 {
-        eprintln!("note: hid[inst={hid_dev_inst}] HID class descriptor too short ({})", hid_cls.len());
         return None;
     }
-    eprintln!("note: hid[inst={hid_dev_inst}] HID class desc bytes: {:02x?}", &hid_cls[..hid_cls.len().min(9)]);
-
     // HID class descriptor layout (0-indexed):
     //   [0] bLength  [1] bDescriptorType=0x21  [2..3] bcdHID
     //   [4] bCountryCode  [5] bNumDescriptors
     //   [6] bDescriptorType (for report = 0x22)  [7..8] wDescriptorLength LE
     let report_len = u16::from_le_bytes([hid_cls[7], hid_cls[8]]);
     if report_len == 0 {
-        eprintln!("note: hid[inst={hid_dev_inst}] wDescriptorLength=0, giving up");
         return None;
     }
-    eprintln!("note: hid[inst={hid_dev_inst}] report descriptor length={report_len}");
 
     // Step 2: get the HID report descriptor (type 0x22).
     hub_request(&hub_path, port, 0x22, interface_num as u16, report_len)
@@ -379,7 +354,6 @@ fn find_hub_and_port(hid_dev_inst: u32) -> Option<(String, u32)> {
 
         current = parent;
     }
-    eprintln!("note: find_hub_and_port: no hub found within 6 levels");
     None
 }
 
@@ -464,8 +438,6 @@ fn hub_request(hub_path: &str, port: u32, desc_type: u8, w_index: u16, w_length:
         )
     };
     if handle == INVALID_HANDLE_VALUE {
-        let err = unsafe { GetLastError() };
-        eprintln!("note: hub CreateFileW failed for {hub_path} err={err:#010x}");
         return None;
     }
 

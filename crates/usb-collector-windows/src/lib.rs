@@ -96,12 +96,6 @@ fn build_device(
         dev_info.serial_number().filter(|s| !s.is_empty()).map(str::to_owned),
     );
     let hid_interfaces = hid_map.get(&key).cloned().unwrap_or_default();
-    eprintln!(
-        "note: build_device {:04x}:{:04x} serial={:?} → hid_map hit={} hid_count={}",
-        key.0, key.1, key.2,
-        hid_map.contains_key(&key),
-        hid_interfaces.len()
-    );
 
     // Try to open the device for full descriptor access.
     // On Windows, only devices using WinUSB (not HID.sys, usbstor, etc.) can be opened
@@ -257,10 +251,7 @@ fn fill_hid_from_device(
             // This fails if another driver (HID.sys) owns the interface — skip silently.
             let iface_handle = match device.claim_interface(inum).wait() {
                 Ok(h) => h,
-                Err(e) => {
-                    eprintln!("note: fill_hid: claim_interface({inum}) failed: {e}");
-                    continue;
-                }
+                Err(_) => continue,
             };
 
             // Standard GET_DESCRIPTOR, recipient=Interface.
