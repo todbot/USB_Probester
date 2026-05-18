@@ -1,7 +1,6 @@
 //! USB device collector for Windows.
 //!
-//! Enumerates connected USB devices via [`nusb`] and attempts to retrieve full
-//! descriptor information for each:
+//! Enumerates connected USB devices via [`nusb`]:
 //!
 //! - Devices using the **WinUSB** driver can be opened directly; full Device and
 //!   Configuration descriptor bytes are read and parsed.
@@ -10,9 +9,9 @@
 //!   etc.) cannot be opened via nusb. These are returned with VID/PID, speed,
 //!   and string descriptors only — interface and endpoint descriptors are absent.
 //!
-//! Known gaps (planned):
-//! - Full descriptor access for class-driver devices requires
-//!   `IOCTL_USB_GET_DESCRIPTOR_FROM_NODE_CONNECTION` via hub handles.
+//! HID report descriptors are collected separately via [`hid::collect_hid_descriptors`],
+//! which uses `HidD_GetPreparsedData` and the `HidP_` capability APIs — works for
+//! all HID devices regardless of driver (HID.sys, WinUSB, etc.).
 //!
 //! The public API is [`WindowsCollector::enumerate`], which returns a
 //! `Vec<`[`UsbDevice`]`>` or a [`CollectorError`].
@@ -185,12 +184,6 @@ fn build_from_open(
         })
         .collect();
 
-    // For devices that nusb can open (WinUSB / virtual), fetch HID report descriptors
-    // via control transfer — more reliable than hub IOCTL for these devices.
-    // The hub-IOCTL pass (hid.rs) already handled real HID.sys devices; only use
-    // this path to fill in interfaces where that pass returned empty bytes.
-    let hid_interfaces = fill_hid_from_device(device, &configurations, hid_interfaces);
-
     Ok(UsbDevice {
         location_id: loc,
         bus_number: 0,
@@ -202,100 +195,6 @@ fn build_from_open(
         hid_interfaces,
         children: vec![],
     })
-}
-
-/// For devices that nusb can open, supplement the hid_map entries (which may have
-/// empty `raw_report_descriptor` if the hub IOCTL path failed) by fetching the
-/// report descriptor via a standard control transfer on the open device handle.
-/// Entries already populated by hid.rs (non-empty bytes) are kept as-is.
-fn fill_hid_from_device(
-    device: &nusb::Device,
-    configurations: &[ConfigDescriptor],
-    mut existing: Vec<HidInterface>,
-) -> Vec<HidInterface> {
-    use nusb::transfer::{ControlIn, ControlType, Recipient};
-    use std::time::Duration;
-
-    // Build set of interface numbers that already have descriptor bytes.
-    let have: std::collections::HashSet<u8> = existing
-        .iter()
-        .filter(|h| !h.raw_report_descriptor.is_empty())
-        .map(|h| h.interface_number)
-        .collect();
-
-    let timeout = Duration::from_millis(500);
-
-    for cfg in configurations {
-        for iface in &cfg.interfaces {
-            if iface.b_interface_class != 3 {
-                continue; // not HID
-            }
-            let inum = iface.b_interface_number;
-            if have.contains(&inum) {
-                continue;
-            }
-
-            // data[5..7] = wDescriptorLength for HID class descriptor (type 0x21).
-            let report_len = iface
-                .class_descriptors
-                .iter()
-                .find(|d| d.descriptor_type == 0x21)
-                .filter(|d| d.data.len() >= 7)
-                .map(|d| u16::from_le_bytes([d.data[5], d.data[6]]))
-                .unwrap_or(0);
-            if report_len == 0 {
-                continue;
-            }
-
-            // Try to claim the HID interface directly (works if WinUSB owns it).
-            // If HID.sys owns it, claim_interface fails; fall back to claiming any
-            // other interface on the device and targeting the HID interface via wIndex.
-            // EP0 is shared across all interfaces, so the USB packet still reaches
-            // the device — Windows may or may not enforce the interface-ownership check.
-            let candidate_inums: Vec<u8> = std::iter::once(inum)
-                .chain(
-                    cfg.interfaces
-                        .iter()
-                        .filter(|i| i.b_interface_number != inum)
-                        .map(|i| i.b_interface_number),
-                )
-                .collect();
-
-            let raw = candidate_inums
-                .iter()
-                .find_map(|&claim_inum| {
-                    let h = device.claim_interface(claim_inum).wait().ok()?;
-                    let bytes = h
-                        .control_in(
-                            ControlIn {
-                                control_type: ControlType::Standard,
-                                recipient: Recipient::Interface,
-                                request: 0x06,
-                                value: 0x2200,
-                                index: inum as u16,
-                                length: report_len,
-                            },
-                            timeout,
-                        )
-                        .wait()
-                        .unwrap_or_default();
-                    if bytes.is_empty() { None } else { Some(bytes) }
-                })
-                .unwrap_or_default();
-
-            let parsed = if raw.is_empty() { None } else { hid_parser::parse(&raw).ok() };
-
-            // Update an existing (empty) entry or push a new one.
-            if let Some(entry) = existing.iter_mut().find(|h| h.interface_number == inum) {
-                entry.raw_report_descriptor = raw;
-                entry.parsed = parsed;
-            } else {
-                existing.push(HidInterface { interface_number: inum, raw_report_descriptor: raw, parsed });
-            }
-        }
-    }
-
-    existing
 }
 
 // Fallback for devices whose class driver blocks nusb from opening them (HID,
