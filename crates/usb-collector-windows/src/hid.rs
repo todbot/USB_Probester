@@ -59,8 +59,8 @@ const GUID_DEVINTERFACE_USB_HUB: windows_sys::core::GUID = windows_sys::core::GU
 // = (0x22 << 16) | (260 << 2) | 0 = 0x00220410
 const IOCTL_USB_GET_DESCRIPTOR_FROM_NODE_CONNECTION: u32 = 0x00220410;
 
-// CM_DRP_ADDRESS: port number of the device on its parent hub (cfgmgr32.h).
-const CM_DRP_ADDRESS: u32 = 12;
+// CM_DRP_ADDRESS: port number of the device on its parent hub (cfgmgr32.h, 0x1D).
+const CM_DRP_ADDRESS: u32 = 0x1D;
 const CR_SUCCESS: u32 = 0;
 const CM_GET_DEVICE_INTERFACE_LIST_PRESENT: u32 = 0;
 
