@@ -9,7 +9,6 @@ Also ships a standalone CLI (`usb-probester-cli`) for text or JSON output.
 
 <img src="./docs/screenshot1.png" width="700">
 
---- 
 
 ## What does this do? 
 
