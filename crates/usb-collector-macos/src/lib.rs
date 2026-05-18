@@ -192,6 +192,13 @@ fn build_device(
     }
     let strings = build_strings(dev_info, &device, &device_descriptor, &extra_indices);
 
+    // Correlate ioreg HID entries (which have interface_number=0 as placeholder) to
+    // the real USB interface numbers from the config descriptor. The ioreg
+    // IOHIDInterface node only exposes the device-level LocationID, not the USB
+    // interface number, so we match positionally: the N-th ioreg HID entry is
+    // assigned the N-th HID interface (class 3, alternate_setting 0) from config 1.
+    let hid_interfaces = assign_interface_numbers(hid_interfaces, &configurations);
+
     let location_id = dev_info.location_id();
 
     Ok(UsbDevice {
@@ -249,6 +256,30 @@ fn build_strings(
     }
 
     strings
+}
+
+fn assign_interface_numbers(
+    mut hid_interfaces: Vec<HidInterface>,
+    configurations: &[ConfigDescriptor],
+) -> Vec<HidInterface> {
+    // Collect the interface numbers of all primary HID interfaces (class 3, alt 0)
+    // in the order they appear in the first configuration.
+    let hid_inums: Vec<u8> = configurations
+        .first()
+        .map(|cfg| {
+            cfg.interfaces
+                .iter()
+                .filter(|i| i.b_interface_class == usb_class::HID && i.b_alternate_setting == 0)
+                .map(|i| i.b_interface_number)
+                .collect()
+        })
+        .unwrap_or_default();
+
+    // Assign positionally: ioreg entry 0 → hid_inums[0], entry 1 → hid_inums[1], …
+    for (hid, &inum) in hid_interfaces.iter_mut().zip(hid_inums.iter()) {
+        hid.interface_number = inum;
+    }
+    hid_interfaces
 }
 
 fn map_speed(speed: Option<nusb::Speed>) -> UsbSpeed {
