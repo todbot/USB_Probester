@@ -23,7 +23,7 @@ use windows_sys::Win32::Devices::DeviceAndDriverInstallation::{
     SP_DEVINFO_DATA, SP_DEVICE_INTERFACE_DATA, SP_DEVICE_INTERFACE_DETAIL_DATA_W,
 };
 use windows_sys::Win32::Devices::HumanInterfaceDevice::{
-    HidD_GetAttributes, HidD_GetReportDescriptor, HidD_GetSerialNumberString, HIDD_ATTRIBUTES,
+    HidD_GetAttributes, HidD_GetSerialNumberString, HIDD_ATTRIBUTES,
 };
 use windows_sys::Win32::Foundation::{CloseHandle, HANDLE, INVALID_HANDLE_VALUE};
 use windows_sys::Win32::Storage::FileSystem::{
@@ -67,7 +67,17 @@ const CM_GET_DEVICE_INTERFACE_LIST_PRESENT: u32 = 0;
 // Fixed header size of USB_DESCRIPTOR_REQUEST (ConnectionIndex + SetupPacket).
 const USB_REQ_HDR: usize = 12;
 
-// ── CM function declarations ────────────────────────────────────────────────────
+// ── Manual DLL function declarations ───────────────────────────────────────────
+// hid.dll — HidD_GetReportDescriptor is not exposed by windows-sys.
+#[link(name = "hid", kind = "raw-dylib")]
+extern "system" {
+    fn HidD_GetReportDescriptor(
+        HidDeviceObject: HANDLE,
+        ReportDescriptor: *mut core::ffi::c_void,
+        ReportDescriptorLength: u32,
+    ) -> u8; // BOOLEAN
+}
+
 // cfgmgr32.dll is always present on Windows; declare manually to avoid needing
 // an additional windows-sys feature.
 
