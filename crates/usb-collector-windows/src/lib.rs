@@ -247,16 +247,27 @@ fn fill_hid_from_device(
                 continue;
             }
 
-            // Standard GET_DESCRIPTOR, recipient=Interface, descriptor type 0x22 (Report).
-            let raw = device
-                .control_in(ControlIn {
-                    control_type: ControlType::Standard,
-                    recipient: Recipient::Interface,
-                    request: 0x06,
-                    value: 0x2200,
-                    index: inum as u16,
-                    length: report_len,
-                })
+            // Claim the interface to issue control transfers on Windows (WinUSB requirement).
+            // This fails if another driver (HID.sys) owns the interface — skip silently.
+            let iface_handle = match device.claim_interface(inum).wait() {
+                Ok(h) => h,
+                Err(_) => continue,
+            };
+
+            // Standard GET_DESCRIPTOR, recipient=Interface.
+            // On Windows, index must equal the interface number (WinUSB limitation).
+            let raw = iface_handle
+                .control_in(
+                    ControlIn {
+                        control_type: ControlType::Standard,
+                        recipient: Recipient::Interface,
+                        request: 0x06,
+                        value: 0x2200,
+                        index: inum as u16,
+                        length: report_len,
+                    },
+                    timeout,
+                )
                 .wait()
                 .unwrap_or_default();
 
