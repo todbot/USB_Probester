@@ -289,6 +289,65 @@ descriptor type plus topology metadata.
 
 ---
 
+## Future work (verified against `tests/fixtures/usb-prober-reference2.txt`)
+
+These sections appear in the original USB Prober output but are not yet
+rendered by the CLI or GUI.
+
+### Missing descriptor sections
+
+- **BOS Descriptor** — Binary Object Store, present on SuperSpeed devices.
+  Contains capability descriptors: USB 2.0 Extension (`bmAttributes` / LPM),
+  SuperSpeed USB Device (speeds, U1/U2 latencies), and ContainerID (UUID).
+  nusb can issue `GET_DESCRIPTOR(BOS)` to obtain the raw bytes; the formatter
+  then needs to parse and render the capability sub-descriptors.
+
+- **Hub Descriptor** (`bDescriptorType = 0x29`) — Hub-class descriptor returned
+  by a `GET_DESCRIPTOR(class, hub)` control transfer. Fields: number of ports,
+  hub characteristics, power-on-to-good time, controller current, device-removable
+  bitmap, port power control mask. Requires opening the device and issuing a
+  class-specific control transfer.
+
+- **Device Qualifier Descriptor** — Present on High Speed devices; describes
+  the device's configuration at the alternate speed. `GET_DESCRIPTOR(0x06)`.
+  Only meaningful for USB 2.0 HS devices.
+
+- **Other Speed Configuration Descriptor** — Full configuration descriptor for
+  the alternate speed. `GET_DESCRIPTOR(0x07)`. Same format as a normal config
+  descriptor; the formatter can reuse `format_config_descriptor`.
+
+### Missing / incomplete rendered fields
+
+- **IAD sub-fields** — The Interface Association block currently renders only
+  a one-line header. USB Prober also shows: `First Interface`, `Interface Count`,
+  `Function Class` (with label), `Function Subclass`, `Interface Protocol`,
+  `Function String`. All fields are already in `InterfaceAssociation` in
+  `usb-types`; the formatter just needs to emit them.
+
+### Format differences (lower priority)
+
+These are cosmetic divergences from the USB Prober reference; data is present
+but rendered differently:
+
+- **Polling interval for SuperSpeed endpoints** — USB Prober shows
+  `8 (128 microframes (16 msecs))` for a bInterval of 8 on a SuperSpeed
+  device. CLI shows `8 ms`. SuperSpeed interval is `2^(bInterval-1)` × 125 µs
+  in microframes; the formatter should detect SuperSpeed and compute accordingly.
+
+- **Endpoint max packet size for interrupt EPs** — USB Prober shows plain `64`;
+  CLI shows `0x0040 (1 x 64 transactions per microframe)`. Reference format uses
+  plain decimal for non-HS interrupt endpoints; the multiplier form is only correct
+  for High Speed where bits 12:11 encode the transaction count.
+
+- **Interface subclass label** — CLI adds a human-readable label
+  (e.g., `(Abstract Control Model)`) that USB Prober omits. Minor; keep or drop.
+
+- **CDC functional descriptor rendering** — USB Prober shows raw hex bytes
+  for each Comm Class functional descriptor. CLI parses them into named fields,
+  which is more useful. No change needed; CLI is richer here.
+
+---
+
 ## Practical tips
 
 - **Pipe real `ioreg` output into the repo as test fixtures.**
