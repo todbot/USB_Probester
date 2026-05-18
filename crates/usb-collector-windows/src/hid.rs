@@ -279,11 +279,18 @@ fn read_hid(handle: HANDLE, interface_number: u8, dev_inst: u32) -> Option<(HidK
     let vid = attrs.VendorID;
     let pid = attrs.ProductID;
     let serial = get_serial(handle);
+    eprintln!(
+        "note: hid[inst={dev_inst}] key=({vid:04x},{pid:04x},{serial:?}) iface={interface_number}"
+    );
 
     // Try hub IOCTL; fall back to empty bytes so the interface still appears.
     let raw = get_report_descriptor_via_hub(dev_inst, interface_number)
         .unwrap_or_default();
     let parsed = if raw.is_empty() { None } else { hid_parser::parse(&raw).ok() };
+    eprintln!(
+        "note: hid[inst={dev_inst}] descriptor bytes={}",
+        raw.len()
+    );
 
     Some((
         (vid, pid, serial),
