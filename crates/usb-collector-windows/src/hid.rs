@@ -2,7 +2,7 @@
 //!
 //! Enumerates all HID device interfaces using SetupDi, opens each one, reads
 //! VID/PID/serial/interface-number, and fetches the report descriptor via
-//! `HidD_GetReportDescriptor`.  Returns a map keyed by `(vid, pid, serial)`
+//! `DeviceIoControl(IOCTL_HID_GET_REPORT_DESCRIPTOR)`.  Returns a map keyed by `(vid, pid, serial)`
 //! so the caller can correlate entries with nusb-enumerated devices.
 
 #![cfg(target_os = "windows")]
@@ -22,23 +22,18 @@ use windows_sys::Win32::Foundation::{CloseHandle, HANDLE, INVALID_HANDLE_VALUE};
 use windows_sys::Win32::Storage::FileSystem::{
     CreateFileW, FILE_SHARE_READ, FILE_SHARE_WRITE, OPEN_EXISTING,
 };
+use windows_sys::Win32::System::IO::DeviceIoControl;
 
 // GENERIC_READ/WRITE are not re-exported by Win32::Storage::FileSystem in this
 // version of windows-sys — define them directly from the SDK headers.
 const GENERIC_READ: u32 = 0x80000000;
 const GENERIC_WRITE: u32 = 0x40000000;
 
-// HidD_GetReportDescriptor is missing from the windows-sys 0.59 bindings.
-// Use raw-dylib (same mechanism windows-sys uses) so the linker generates the
-// import stub directly without needing hid.lib on the search path.
-#[link(name = "hid", kind = "raw-dylib")]
-extern "system" {
-    fn HidD_GetReportDescriptor(
-        HidDeviceObject: HANDLE,
-        ReportDescriptor: *mut core::ffi::c_void,
-        ReportDescriptorLength: u32,
-    ) -> i32;
-}
+// HidD_GetReportDescriptor does NOT exist in the user-mode hid.dll.
+// The correct user-mode path is DeviceIoControl with IOCTL_HID_GET_REPORT_DESCRIPTOR.
+// CTL_CODE(FILE_DEVICE_KEYBOARD=0xb, func=0, METHOD_NEITHER=3, FILE_ANY_ACCESS=0)
+// = (0xb << 16) | (0 << 14) | (0 << 2) | 3 = 0x000b0003
+const IOCTL_HID_GET_REPORT_DESCRIPTOR: u32 = 0x000b0003;
 
 // {4D1E55B2-F16F-11CF-88CB-001111000030}
 const GUID_DEVINTERFACE_HID: windows_sys::core::GUID = windows_sys::core::GUID {
@@ -246,21 +241,27 @@ fn get_serial(handle: HANDLE) -> Option<String> {
 }
 
 fn get_report_descriptor(handle: HANDLE) -> Option<Vec<u8>> {
-    // HidD_GetReportDescriptor requires the exact descriptor length.
-    // We don't have the config descriptor for HID.sys devices, so probe sizes.
-    // The first size that succeeds gives us the correct descriptor bytes.
-    for &size in &[64usize, 128, 256, 512, 1024, 2048, 4096] {
-        let mut buf = vec![0u8; size];
-        let ok = unsafe {
-            HidD_GetReportDescriptor(
-                handle,
-                buf.as_mut_ptr() as *mut core::ffi::c_void,
-                size as u32,
-            )
-        };
-        if ok != 0 {
-            return Some(buf);
-        }
+    // IOCTL_HID_GET_REPORT_DESCRIPTOR is METHOD_NEITHER; the HID class driver
+    // writes directly to our buffer and returns the actual byte count.
+    // 4096 bytes comfortably exceeds any real HID descriptor.
+    let mut buf = vec![0u8; 4096];
+    let mut bytes_returned: u32 = 0;
+    let ok = unsafe {
+        DeviceIoControl(
+            handle,
+            IOCTL_HID_GET_REPORT_DESCRIPTOR,
+            core::ptr::null(),
+            0,
+            buf.as_mut_ptr() as *mut core::ffi::c_void,
+            buf.len() as u32,
+            &mut bytes_returned,
+            core::ptr::null_mut(),
+        )
+    };
+    if ok != 0 && bytes_returned > 0 {
+        buf.truncate(bytes_returned as usize);
+        Some(buf)
+    } else {
+        None
     }
-    None
 }
