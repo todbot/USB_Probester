@@ -1,4 +1,4 @@
-# USB Probester
+# <img src="./src-tauri/icons/128x128.png" width=50 align="top"> USB Probester
 
 A cross-platform (Mac/Win/Linux/RasPi) desktop app for exploring connected USB devices — their
 device descriptors, configuration descriptors, interface and endpoint
