@@ -29,9 +29,9 @@ const GENERIC_READ: u32 = 0x80000000;
 const GENERIC_WRITE: u32 = 0x40000000;
 
 // HidD_GetReportDescriptor is missing from the windows-sys 0.59 bindings.
-// hid.dll is already linked via the Win32_Devices_HumanInterfaceDevice feature,
-// so declare the function manually against the same import library.
-#[link(name = "hid")]
+// Use raw-dylib (same mechanism windows-sys uses) so the linker generates the
+// import stub directly without needing hid.lib on the search path.
+#[link(name = "hid", kind = "raw-dylib")]
 extern "system" {
     fn HidD_GetReportDescriptor(
         HidDeviceObject: HANDLE,
