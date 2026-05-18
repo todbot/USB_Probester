@@ -404,22 +404,45 @@ function u16le(data: number[], off: number) {
   return data[off] | (data[off + 1] << 8);
 }
 
-function ClassSpecificNode({ cs, ifaceClass, ifaceSubClass }: { cs: ClassSpecificDescriptor; ifaceClass: number; ifaceSubClass: number }) {
+function ClassSpecificNode({ cs, ifaceClass, ifaceSubClass, hid }: { cs: ClassSpecificDescriptor; ifaceClass: number; ifaceSubClass: number; hid?: HidInterface_Serialize }) {
   const { descriptor_type: typ, descriptor_subtype: sub, data } = cs;
 
-  // HID class descriptor (0x21)
+  // HID class descriptor (0x21) — mirrors USB Prober reference format
   if (typ === 0x21) {
     const bcdHID = u16le(data, 0);
-    const hidDescTypeName: Record<number, string> = { 0x22: "Report", 0x23: "Physical" };
+    const numDescriptors = data[3] ?? 0;
+    const typeNames: Record<number, string> = { 0x22: "Report Descriptor", 0x23: "Physical Descriptor" };
     return (
       <TreeNode label="HID Descriptor">
-        <Leaf label="bcdHID:" value={hex4(bcdHID)} />
-        <Leaf label="bCountryCode:" value={`${data[2]}`} />
-        <Leaf label="bNumDescriptors:" value={`${data[3]}`} />
-        {data[3] > 0 && <>
-          <Leaf label="bDescriptorType:" value={`${hidDescTypeName[data[4]] ?? hex2(data[4])}`} />
-          <Leaf label="wDescriptorLength:" value={`${u16le(data, 5)}`} />
-        </>}
+        <Leaf label="Descriptor Version Number:" value={hex4(bcdHID)} />
+        <Leaf label="Country Code:" value={`${data[2] ?? 0}`} />
+        <Leaf label="Descriptor Count:" value={`${numDescriptors}`} />
+        {Array.from({ length: numDescriptors }, (_, i) => {
+          const offset = 4 + i * 3;
+          if (offset + 3 > data.length) return null;
+          const descType = data[offset];
+          const descLen = u16le(data, offset + 1);
+          const typeName = typeNames[descType] ?? hex2(descType);
+          const reportBytes = descType === 0x22 && hid && hid.raw_report_descriptor.length > 0
+            ? hid.raw_report_descriptor : null;
+          return (
+            <TreeNode key={i} label={`Descriptor ${i + 1}`}>
+              <Leaf label="Type:" value={`${hex2(descType)}  (${typeName})`} />
+              {reportBytes ? (
+                <TreeNode label={`Length (and contents):   ${reportBytes.length}`}>
+                  <HexBlock bytes={reportBytes} />
+                </TreeNode>
+              ) : (
+                <Leaf label="Length (and contents):" value={`${descLen}`} />
+              )}
+              {descType === 0x22 && hid?.parsed && hid.parsed.length > 0 && (
+                <TreeNode label="Parsed Report Descriptor:" defaultOpen>
+                  {hid.parsed.map((node, j) => <HidNodeView key={j} node={node} />)}
+                </TreeNode>
+              )}
+            </TreeNode>
+          );
+        })}
       </TreeNode>
     );
   }
@@ -589,9 +612,8 @@ function InterfaceNode({
       })()} />
       <Leaf label="Interface Protocol:" value={`${iface.b_interface_protocol}`} />
       {(iface.class_descriptors ?? []).map((cs, i) => (
-        <ClassSpecificNode key={i} cs={cs} ifaceClass={iface.b_interface_class} ifaceSubClass={iface.b_interface_sub_class} />
+        <ClassSpecificNode key={i} cs={cs} ifaceClass={iface.b_interface_class} ifaceSubClass={iface.b_interface_sub_class} hid={hid} />
       ))}
-      {hid && <HidDescriptorNode hid={hid} />}
       {iface.endpoints.map((ep, i) => (
         <EndpointNode key={i} ep={ep} />
       ))}
@@ -622,9 +644,6 @@ function ConfigNode({
   cfg: ConfigDescriptor_Serialize;
   device: UsbDevice_Serialize;
 }) {
-  // Assign HID interfaces to HID-class (3) USB interfaces in order of appearance
-  const hidClassIfaces = cfg.interfaces.filter((i) => i.b_interface_class === 3);
-
   return (
     <TreeNode label="Configuration Descriptor (current config)" defaultOpen>
       {cfg.raw_bytes && cfg.raw_bytes.length > 0 && (
@@ -640,8 +659,9 @@ function ConfigNode({
         const iad = (cfg.interface_associations ?? []).find(
           a => a.b_first_interface === iface.b_interface_number
         );
-        const hidIdx = hidClassIfaces.indexOf(iface);
-        const hid = hidIdx >= 0 ? device.hid_interfaces[hidIdx] : undefined;
+        const hid = iface.b_alternate_setting === 0
+          ? device.hid_interfaces.find(h => h.interface_number === iface.b_interface_number)
+          : undefined;
         return (
           <React.Fragment key={i}>
             {iad && <IadNode iad={iad} device={device} />}
