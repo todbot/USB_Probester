@@ -86,7 +86,7 @@ extern "system" {
 
     fn CM_Get_Device_IDW(dnDevInst: u32, Buffer: *mut u16, BufferLen: u32, ulFlags: u32) -> u32;
 
-    fn CM_Get_Device_Interface_ListSizeW(
+    fn CM_Get_Device_Interface_List_SizeW(
         pulLen: *mut u32,
         InterfaceClassGuid: *const windows_sys::core::GUID,
         pDeviceID: *const u16,
@@ -391,7 +391,7 @@ fn get_hub_interface_path(hub_inst: u32) -> Option<String> {
     // Query the required list size.
     let mut list_size: u32 = 0;
     let cr = unsafe {
-        CM_Get_Device_Interface_ListSizeW(
+        CM_Get_Device_Interface_List_SizeW(
             &mut list_size,
             &GUID_DEVINTERFACE_USB_HUB,
             id_wide.as_ptr(),
