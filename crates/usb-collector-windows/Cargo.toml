@@ -7,3 +7,13 @@ edition = "2021"
 usb-types = { path = "../usb-types" }
 hid-parser = { path = "../hid-parser" }
 nusb = "0.2.3"
+
+[target.'cfg(windows)'.dependencies.windows-sys]
+version = "0.59"
+features = [
+    "Win32_Devices_HumanInterfaceDevice",
+    "Win32_Devices_DeviceAndDriverInstallation",
+    "Win32_Foundation",
+    "Win32_Storage_FileSystem",
+    "Win32_Security",
+]

@@ -1,6 +1,6 @@
 # USB Probester
 
-A cross-platform desktop app for exploring connected USB devices — their
+A cross-platform (Mac/Win/Linux/RasPi) desktop app for exploring connected USB devices — their
 device descriptors, configuration descriptors, interface and endpoint
 details, and parsed HID report descriptors. Spiritual successor to Apple's
 __`USB Prober.app`__.

@@ -13,13 +13,15 @@
 //! Known gaps (planned):
 //! - Full descriptor access for class-driver devices requires
 //!   `IOCTL_USB_GET_DESCRIPTOR_FROM_NODE_CONNECTION` via hub handles.
-//! - HID report descriptors require `HidD_GetReportDescriptor` via `windows-sys`.
 //!
 //! The public API is [`WindowsCollector::enumerate`], which returns a
 //! `Vec<`[`UsbDevice`]`>` or a [`CollectorError`].
 
 #![cfg(target_os = "windows")]
 
+mod hid;
+
+use std::collections::HashMap;
 use nusb::MaybeFuture;
 use usb_types::*;
 
@@ -33,9 +35,10 @@ impl WindowsCollector {
     }
 
     pub fn enumerate(&self) -> Result<Vec<UsbDevice>, CollectorError> {
+        let hid_map = hid::collect_hid_descriptors();
         let mut result = Vec::new();
         for dev_info in nusb::list_devices().wait()? {
-            match build_device(&dev_info) {
+            match build_device(&dev_info, &hid_map) {
                 Ok(device) => result.push(device),
                 Err(e) => eprintln!(
                     "warning: skipped {:04x}:{:04x}: {}",
@@ -82,21 +85,30 @@ impl From<nusb::Error> for CollectorError {
 
 // ── Device builder ─────────────────────────────────────────────────────────────
 
-fn build_device(dev_info: &nusb::DeviceInfo) -> Result<UsbDevice, CollectorError> {
+fn build_device(
+    dev_info: &nusb::DeviceInfo,
+    hid_map: &HashMap<hid::HidKey, Vec<HidInterface>>,
+) -> Result<UsbDevice, CollectorError> {
     let loc = make_location_id(dev_info);
+    let key = (
+        dev_info.vendor_id(),
+        dev_info.product_id(),
+        dev_info.serial_number().filter(|s| !s.is_empty()).map(str::to_owned),
+    );
+    let hid_interfaces = hid_map.get(&key).cloned().unwrap_or_default();
 
     // Try to open the device for full descriptor access.
     // On Windows, only devices using WinUSB (not HID.sys, usbstor, etc.) can be opened
     // this way.  For everything else we fall back to the info available from enumeration.
     match dev_info.open().wait() {
-        Ok(device) => build_from_open(dev_info, &device, loc),
+        Ok(device) => build_from_open(dev_info, &device, loc, hid_interfaces),
         Err(e) => {
             eprintln!(
                 "note: cannot open {:04x}:{:04x} ({e}), using partial info",
                 dev_info.vendor_id(),
                 dev_info.product_id()
             );
-            Ok(build_from_info(dev_info, loc))
+            Ok(build_from_info(dev_info, loc, hid_interfaces))
         }
     }
 }
@@ -105,6 +117,7 @@ fn build_from_open(
     dev_info: &nusb::DeviceInfo,
     device: &nusb::Device,
     loc: String,
+    hid_interfaces: Vec<HidInterface>,
 ) -> Result<UsbDevice, CollectorError> {
     let ndd = device.device_descriptor();
 
@@ -180,14 +193,14 @@ fn build_from_open(
         device_descriptor,
         configurations,
         strings,
-        hid_interfaces: vec![], // TODO: Windows HID enumeration
+        hid_interfaces,
         children: vec![],
     })
 }
 
 // Fallback for devices whose class driver blocks nusb from opening them (HID,
 // mass storage, CDC, etc.).  We can still show VID/PID, speed, and strings.
-fn build_from_info(dev_info: &nusb::DeviceInfo, loc: String) -> UsbDevice {
+fn build_from_info(dev_info: &nusb::DeviceInfo, loc: String, hid_interfaces: Vec<HidInterface>) -> UsbDevice {
     // Use synthetic string indices 1/2/3 so the strings vec lines up correctly.
     let i_manufacturer = if dev_info.manufacturer_string().is_some() { 1 } else { 0 };
     let i_product      = if dev_info.product_string().is_some()      { 2 } else { 0 };
@@ -219,7 +232,7 @@ fn build_from_info(dev_info: &nusb::DeviceInfo, loc: String) -> UsbDevice {
         device_descriptor,
         configurations: vec![],
         strings,
-        hid_interfaces: vec![],
+        hid_interfaces,
         children: vec![],
     }
 }

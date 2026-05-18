@@ -108,11 +108,11 @@ npm run clean
   usbstor, CDC, etc. — their class driver blocks nusb from opening them
 - `location_id` is `"{vid:04x}:{pid:04x}:{serial}"` or `"…:{port.chain}"` if no serial
 - `bus_number` is always 0 (Windows doesn't expose it the same way)
-- HID report descriptors not yet implemented (needs `HidD_GetReportDescriptor` via `windows-sys`)
+- HID report descriptors collected via SetupDi + `HidD_GetReportDescriptor` in `src/hid.rs`;
+  two-pass strategy mirrors the macOS collector (nusb pass + HID pass keyed by vid/pid/serial)
 - Full config descriptor access for non-WinUSB devices needs `IOCTL_USB_GET_DESCRIPTOR_FROM_NODE_CONNECTION`
 
 ## Current focus
 
 All planned steps done. Remaining work:
-- Windows HID descriptors (`HidD_GetReportDescriptor` via `windows-sys`)
 - Windows full config descriptor access for non-WinUSB devices (hub IOCTLs)
