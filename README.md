@@ -70,11 +70,14 @@ output format and correctness.
 |----------|------------------|------------|------------|------------|
 | macOS    | ✓ full           | ✓ working  | ✓ working  | ✓ working  |
 | Linux    | ✓ full           | ✓ shared   | ✓ working  | ✓ working  |
-| Windows  | ⚠ partial¹       | ✓ shared   | ✓ working  | ✓ working  |
+| Windows  | ✓ full¹          | ✓ shared   | ✓ working  | ✓ working  |
 
-¹ WinUSB devices show full descriptors; devices using HID.sys, usbstor, and other
-class drivers show VID/PID, speed, and strings only. HID report descriptors not yet
-implemented. Full descriptor support requires hub IOCTLs (planned).
+¹ All devices show VID/PID, speed, strings, and configuration descriptors.
+HID report descriptors are reconstructed via `HidD_GetPreparsedData` and the
+public `HidP_` capability APIs — the same approach used by `hidapi`. The
+reconstructed descriptor is valid and parseable but is not byte-identical to
+the original: vendor-specific items are absent and sub-collection nesting is
+flattened. This works for all HID devices regardless of driver (HID.sys, WinUSB, etc.).
 
 
 ---
@@ -149,11 +152,19 @@ cargo build --release -p usb-cli
 # → target/release/usb-probester-cli
 ```
 
-*MacOS note:* if you want to run an unsigned binary, you need to clear the 
-`quarantine` attribute with:
+*macOS note:* to run an unsigned binary, clear the quarantine attribute:
 
 ```bash
 xattr -cr target/release/usb-probester-cli
+```
+
+*Windows cross-compilation note:* if building on an ARM Windows machine and
+targeting x86_64 machines, add the target and build explicitly:
+
+```
+rustup target add x86_64-pc-windows-msvc
+cargo build --release -p usb-cli --target x86_64-pc-windows-msvc
+# → target\x86_64-pc-windows-msvc\release\usb-probester-cli.exe
 ```
 
 ### Workspace layout
@@ -243,12 +254,30 @@ Everything comes from sysfs — no device open, no elevated privileges:
 
 ### Windows (`crates/usb-collector-windows`)
 
-Uses `nusb::list_devices()` for enumeration. Devices with the WinUSB driver
-loaded can be opened for full descriptor access. Devices using Windows class
-drivers (HID.sys for keyboards/mice, usbstor for drives, etc.) cannot be
-opened via nusb — those show VID/PID, speed, and strings but no interface or
-endpoint descriptors. Full descriptor support via hub IOCTLs and HID report
-descriptor support via `HidD_GetReportDescriptor` are planned.
+Uses `nusb::list_devices()` for enumeration. nusb opens devices via the Windows
+USB device interface, giving descriptor read access for all devices regardless
+of driver.
+
+HID report descriptors are retrieved via `src/hid.rs` using the preparsed-data
+approach (the same strategy used by `hidapi`):
+
+1. SetupDi enumerates all HID device interfaces via `GUID_DEVINTERFACE_HID`.
+2. Each interface is opened with `CreateFile` and queried via `HidD_GetAttributes`
+   (VID/PID) and `HidD_GetSerialNumberString`.
+3. `HidD_GetPreparsedData` returns an opaque capability handle, which
+   `HidP_GetCaps`, `HidP_GetButtonCaps`, and `HidP_GetValueCaps` decode into
+   button and value capability lists for Input, Output, and Feature report types.
+4. A synthetic HID report descriptor is reconstructed from those capabilities
+   using standard HID short-item encoding.
+
+The reconstructed descriptor is valid and parseable but not byte-identical to the
+original: vendor-specific items are absent and sub-collection nesting is flattened.
+This approach works for all HID devices regardless of driver (HID.sys, WinUSB, etc.).
+
+Hub IOCTLs (`IOCTL_USB_GET_DESCRIPTOR_FROM_NODE_CONNECTION`) cannot retrieve HID
+class descriptors because the Windows kernel unconditionally overwrites the
+`bmRequest` field to `0x80`, making class-specific requests impossible.
+`HidD_GetReportDescriptor` is kernel-mode only and not callable from user space.
 
 ### macOS (`crates/usb-collector-macos`)
 

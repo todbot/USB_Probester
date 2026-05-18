@@ -134,33 +134,40 @@ device. `location_id` is set to the sysfs basename (e.g. `"2-4"`, `"2-2.3"`).
 
 ---
 
-## Windows collector ✓ basic done — full descriptors TODO
+## Windows collector ✓ done
 
 `crates/usb-collector-windows/src/lib.rs` — follows the macOS pattern using nusb.
 
 **What works:**
 - `nusb::list_devices()` enumerates all USB devices
-- Devices with WinUSB driver loaded: full device descriptor + config descriptors via `dev_info.open()`
-- All devices: VID/PID, speed, manufacturer/product/serial strings
+- nusb reads device/config descriptors via Windows USB device interface (hub-level);
+  works for all devices regardless of driver (WinUSB, HID.sys, usbstor, usbaudio, etc.)
+- All devices: VID/PID, speed, manufacturer/product/serial strings, config descriptors
 - `location_id` constructed from `{vid:04x}:{pid:04x}:{serial_or_port_chain}`
+- HID report descriptors via `src/hid.rs`:
+  - SetupDi enumerates all HID device interfaces (`GUID_DEVINTERFACE_HID`)
+  - Opens each with `CreateFile` → `HidD_GetAttributes` for VID/PID
+  - `HidD_GetSerialNumberString` for serial (used as map key)
+  - `HidD_GetPreparsedData` → `HidP_GetCaps` / `HidP_GetButtonCaps` /
+    `HidP_GetValueCaps` to enumerate all input/output/feature capabilities
+  - Reconstructs a synthetic but valid HID report descriptor from those capabilities
+  - Interface number parsed from device path (`MI_xx` segment)
 
-**What's missing — the hard parts:**
+**Approach rationale:**
 
-*Full descriptors for class-driver devices:* HID keyboards/mice/webcams etc. are owned
-by HID.sys and can't be opened via nusb/WinUSB. The canonical path (used by Microsoft's
-USBView) is to go through the hub driver:
-1. Enumerate hubs via `CreateFile(\\.\HCD0)` etc.
-2. Per-port: `IOCTL_USB_GET_NODE_CONNECTION_INFORMATION_EX`
-3. Per-device: `IOCTL_USB_GET_DESCRIPTOR_FROM_NODE_CONNECTION` → raw bytes
+The Windows kernel unconditionally overwrites the `bmRequest` field in
+`IOCTL_USB_GET_DESCRIPTOR_FROM_NODE_CONNECTION` to `0x80` (standard device
+request), making it impossible to retrieve HID class descriptors (types 0x21,
+0x22) via hub IOCTLs. `HidD_GetReportDescriptor` is kernel-mode only and not
+exported from user-mode `hid.dll`. The preparsed-data approach (`hidapi` style)
+is the correct user-mode path and works for all HID devices regardless of driver.
 
-*HID report descriptors:* use `HidD_GetReportDescriptor` (hid.dll) via `windows-sys`.
-Match devices to HID paths by VID/PID/serial or instance ID, similar to how macOS
-uses ioreg LocationID correlation.
-
-Microsoft's USBView source is the reference:
-`github.com/microsoft/Windows-driver-samples/tree/main/usb/usbview`.
-Add `windows-sys` with `Win32_Devices_HumanInterfaceDevice` + `Win32_Storage_FileSystem`
-features. This is a real chunk of work — budget it as the bulk of completing the Windows port.
+**Synthetic descriptor limitations:**
+- Not byte-identical to the device's original descriptor
+- Vendor-specific items are absent (not exposed via HidP_ APIs)
+- Sub-collection nesting is flattened to a single Application collection
+- Item ordering may differ from the original
+- Despite these differences the output is valid HID and fully parseable
 
 ---
 
@@ -182,6 +189,26 @@ Key implementation details:
 - Output/Feature: always show 9 flags including Volatile (bit 7)
 - Usage table is a minimal static match covering common pages; unknown usages
   fall back to `Usage N (0xN)` matching USB Prober behaviour
+
+**HID output hierarchy** (matches USB Prober reference fixture):
+```
+Interface #N - HID
+    HID Descriptor
+        Descriptor Version Number:   0x0111
+        Country Code:   0
+        Descriptor Count:   1
+        Descriptor 1
+            Type:   0x22  (Report Descriptor)
+            Length (and contents):   156
+                Raw Descriptor (hex)    0000: ...
+            Parsed Report Descriptor:
+                  Usage Page    (Generic Desktop)
+                  ...
+    Endpoint 0x84 - Interrupt Input
+```
+The formatter (`crates/usb-formatter`) and the GUI tree view both produce this
+hierarchy. The `HID Report Descriptor` is nested inside `HID Descriptor` →
+`Descriptor N`, not rendered as a separate top-level sibling.
 
 ---
 

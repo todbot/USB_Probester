@@ -1,8 +1,5 @@
 # Project: USBProbester
 
-resume windows foolery: resume this:claude --resume f09ac640-dfb0-4505-bddd-ba97941ae0c0
-
-
 Cross-platform Tauri app recreating Apple's old `USB Prober.app`:
 hierarchical USB device tree with parsed Device descriptors,
 Configuration descriptors, and HID Report descriptors.
@@ -34,7 +31,7 @@ See `PLAN.md` for the full architecture.
 5. ~~Linux collector (`/sys`)~~ ✓ done
 6. ~~Frontend tree + descriptor panels~~ ✓ done
 7. ~~Hotplug (nusb watch_devices + auto-refresh toggle)~~ ✓ done
-8. ~~Windows basic enumeration (nusb)~~ ✓ done — HID descriptors + full config access via hub IOCTLs still TODO
+8. ~~Windows basic enumeration (nusb)~~ ✓ done — HID descriptors via HidD_GetPreparsedData reconstruction
 9. ~~Class-specific descriptors (CS_INTERFACE/HID/IAD)~~ ✓ done — CDC, Audio, MIDI decoded; generic hex fallback for unknowns
 10. ~~Row selection~~ ✓ done — click/drag selects rows line-by-line; Cmd+C copies formatter-matched text
 
@@ -73,6 +70,11 @@ cargo run -p usb-cli -- --format json
 cargo build --release -p usb-cli
 # binary at target/release/usb-probester-cli
 
+# Windows — cross-compile x86_64 binary from ARM Windows build machine
+rustup target add x86_64-pc-windows-msvc
+cargo build --release -p usb-cli --target x86_64-pc-windows-msvc
+# binary at target\x86_64-pc-windows-msvc\release\usb-probester-cli.exe
+
 # Linux — live USB enumeration
 cargo run -p usb-collector-linux --example dump_one
 
@@ -106,26 +108,68 @@ npm run clean
 `crates/usb-collector-windows/src/lib.rs` — nusb-based, cfg-gated with `#![cfg(target_os = "windows")]`.
 
 - `nusb::list_devices()` for metadata (port_chain, strings, speed)
-- Tries `dev_info.open()` for full descriptor access (works for WinUSB devices)
-- Falls back to partial info (VID/PID/strings/speed only) for devices owned by HID.sys,
-  usbstor, CDC, etc. — their class driver blocks nusb from opening them
+- nusb opens devices via `GUID_DEVINTERFACE_USB_DEVICE` (hub-level access); gives
+  descriptor reads for ALL devices, not just WinUSB ones
+- `claim_interface(n)` requires WinUSB on interface n; class-driver interfaces
+  (HID.sys, usbstor, usbaudio, usbser) return "incompatible driver" and cannot be claimed
 - `location_id` is `"{vid:04x}:{pid:04x}:{serial}"` or `"…:{port.chain}"` if no serial
 - `bus_number` is always 0 (Windows doesn't expose it the same way)
-- HID report descriptors: two-pass strategy in `src/hid.rs` (mirrors macOS collector):
-  - Pass 1: SetupDi enumerates all HID device interfaces; keyed by (vid, pid, serial)
-  - Pass 2: For each HID device, walks CM device tree to find parent USB hub + port,
-    then sends `IOCTL_USB_GET_DESCRIPTOR_FROM_NODE_CONNECTION` to the hub:
-    first type=0x21 (HID class descriptor, 9 bytes) to read wDescriptorLength,
-    then type=0x22 (report descriptor) with that exact length
-  - Falls back to nusb control transfer (claim_interface + control_in) for WinUSB devices
-    where the hub IOCTL is unavailable
-- Hub IOCTL requires a real hardware USB hub; KVM-virtual hubs (e.g. VID 203A/FFFE)
-  reject class-specific descriptor requests with ERROR_GEN_FAILURE (0x1f)
-- Full config descriptor access for non-WinUSB devices needs `IOCTL_USB_GET_DESCRIPTOR_FROM_NODE_CONNECTION`
+- HID report descriptors via `src/hid.rs` — preparsed-data approach (hidapi style):
+  - SetupDi enumerates all HID device interfaces (`GUID_DEVINTERFACE_HID`)
+  - Opens each with `CreateFile` → `HidD_GetAttributes` for VID/PID/version
+  - `HidD_GetSerialNumberString` for serial (map key: `(vid, pid, serial)`)
+  - `parse_interface_number` extracts `MI_xx` from the device path for `interface_number`
+  - `HidD_GetPreparsedData` → `HidP_GetCaps` / `HidP_GetButtonCaps` /
+    `HidP_GetValueCaps` to enumerate capabilities for Input, Output, Feature report types
+  - Reconstructs a synthetic but valid and parseable HID report descriptor
+  - Works for all HID devices regardless of driver (HID.sys, WinUSB, etc.)
+
+### Why not hub IOCTLs or control transfers
+
+The Windows kernel unconditionally overwrites `bmRequest=0x80` in
+`IOCTL_USB_GET_DESCRIPTOR_FROM_NODE_CONNECTION`, making HID class descriptor
+requests (types 0x21, 0x22) impossible. `HidD_GetReportDescriptor` is kernel-mode
+only and not exported from user-mode `hid.dll`. The preparsed-data path is the
+correct user-mode approach and is what `hidapi` uses.
+
+### Synthetic descriptor limitations
+
+- Not byte-identical to the device's original descriptor
+- Vendor-specific items absent (not exposed via `HidP_` APIs)
+- Sub-collection nesting flattened to a single Application collection
+- Item ordering may differ from the original
+- Output is valid HID and fully parseable by the `hid-parser` crate
+
+### Cross-compilation from ARM Windows
+
+```
+rustup target add x86_64-pc-windows-msvc
+cargo build --release -p usb-cli --target x86_64-pc-windows-msvc
+```
+
+## Text formatter and HID output hierarchy
+
+`crates/usb-formatter/src/lib.rs` — the Mac USB Prober-style text renderer used by
+both the Tauri "Save Output" command and the CLI binary.
+
+HID report descriptors are nested inside the `HID Descriptor` block, matching the
+USB Prober reference fixture:
+```
+Interface #N - HID
+    HID Descriptor
+        Descriptor Version Number:   0x0111
+        Country Code:   0
+        Descriptor Count:   1
+        Descriptor 1
+            Type:   0x22  (Report Descriptor)
+            Length (and contents):   156
+                Raw Descriptor (hex)    0000: ...
+            Parsed Report Descriptor:
+                  Usage Page    (Generic Desktop)
+    Endpoint ...
+```
+The GUI tree view uses the same hierarchy via `ClassSpecificNode` in `App.tsx`.
 
 ## Current focus
 
-All planned steps done. Remaining work:
-- Windows full config descriptor access for non-WinUSB devices (hub IOCTLs)
-- Windows HID report descriptor: code is complete and correct; blocked by KVM virtual
-  hub in current test environment — requires real hardware hub to verify
+All planned steps done. No blocking code issues remain.
