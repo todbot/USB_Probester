@@ -146,6 +146,14 @@ cargo run -p usb-cli
 # Pretty-printed JSON
 cargo run -p usb-cli -- --format json
 
+# Filter by vendor ID and/or product ID (hex, with or without 0x prefix)
+cargo run -p usb-cli -- --vid 27b8
+cargo run -p usb-cli -- --vid 27b8 --pid 4444
+cargo run -p usb-cli -- --format json --vid 0x27b8
+
+# Omit USB hubs
+cargo run -p usb-cli -- --hide-hubs
+
 # Build a standalone release binary
 cargo build --release -p usb-cli
 # → target/release/usb-probester-cli
