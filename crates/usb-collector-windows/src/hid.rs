@@ -405,10 +405,14 @@ fn get_hub_interface_path(hub_inst: u32) -> Option<String> {
         CM_Get_Device_IDW(hub_inst, id_buf.as_mut_ptr(), id_buf.len() as u32, 0)
     };
     if cr != CR_SUCCESS {
+        eprintln!("note: get_hub_interface_path: CM_Get_Device_IDW failed cr={cr:#x} for inst={hub_inst}");
         return None;
     }
 
     let id_end = id_buf.iter().position(|&c| c == 0).unwrap_or(id_buf.len());
+    let hub_id_str = String::from_utf16_lossy(&id_buf[..id_end]);
+    eprintln!("note: get_hub_interface_path: hub_inst={hub_inst} id={hub_id_str:?}");
+
     // Build a null-terminated wide string for the CM APIs.
     let mut id_wide: Vec<u16> = id_buf[..id_end].to_vec();
     id_wide.push(0);
@@ -424,6 +428,7 @@ fn get_hub_interface_path(hub_inst: u32) -> Option<String> {
         )
     };
     if cr != CR_SUCCESS || list_size <= 1 {
+        eprintln!("note: get_hub_interface_path: list size cr={cr:#x} list_size={list_size} for {hub_id_str:?}");
         return None;
     }
 
