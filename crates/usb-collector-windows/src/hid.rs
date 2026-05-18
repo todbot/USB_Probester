@@ -351,73 +351,62 @@ fn get_report_descriptor_via_hub(hid_dev_inst: u32, interface_num: u8) -> Option
 
 /// Walk up the device tree from the HID node to find the USB device's port
 /// number on its parent hub, then return the hub's device interface path.
+///
+/// Strategy: at each level, try `probe_hub_interface_path` on the *parent*.
+/// When it returns Some, the parent is a USB hub and the current node is the
+/// USB device sitting on it; CM_DRP_ADDRESS on current gives the port number.
 fn find_hub_and_port(hid_dev_inst: u32) -> Option<(String, u32)> {
     let mut current = hid_dev_inst;
 
-    // Walk up to 4 levels; stop when we find a node whose CM_DRP_ADDRESS > 0
-    // (that's the USB device directly attached to a hub).
-    for _ in 0..4 {
+    for _ in 0..6 {
         let mut parent: u32 = 0;
         if unsafe { CM_Get_Parent(&mut parent, current, 0) } != CR_SUCCESS {
             return None;
         }
 
-        let mut addr: u32 = 0;
-        let mut size: u32 = 4;
-        let cr = unsafe {
-            CM_Get_DevNode_Registry_PropertyW(
-                parent,
-                CM_DRP_ADDRESS,
-                core::ptr::null_mut(),
-                &mut addr as *mut u32 as *mut core::ffi::c_void,
-                &mut size,
-                0,
-            )
-        };
-
-        if cr == CR_SUCCESS && addr > 0 {
-            // `parent` is the USB device on the hub at port `addr`.
-            let mut hub_inst: u32 = 0;
-            if unsafe { CM_Get_Parent(&mut hub_inst, parent, 0) } != CR_SUCCESS {
-                eprintln!("note: CM_Get_Parent(hub) failed for parent={parent}");
-                return None;
-            }
-            match get_hub_interface_path(hub_inst) {
-                Some(path) => return Some((path, addr)),
-                None => {
-                    eprintln!("note: get_hub_interface_path failed for hub_inst={hub_inst}");
-                    return None;
-                }
-            }
+        if let Some(hub_path) = probe_hub_interface_path(parent) {
+            // parent is the hub; get port from current's CM_DRP_ADDRESS.
+            let port = cm_address(current)?;
+            return Some((hub_path, port));
         }
 
         current = parent;
     }
-    eprintln!("note: find_hub_and_port: exhausted 4-level walk without finding CM_DRP_ADDRESS");
+    eprintln!("note: find_hub_and_port: no hub found within 6 levels");
     None
 }
 
-/// Get the device interface path for a USB hub CM device instance.
-fn get_hub_interface_path(hub_inst: u32) -> Option<String> {
-    // Get the hub's device instance ID as a wide string.
+fn cm_address(inst: u32) -> Option<u32> {
+    let mut addr: u32 = 0;
+    let mut size: u32 = 4;
+    let cr = unsafe {
+        CM_Get_DevNode_Registry_PropertyW(
+            inst,
+            CM_DRP_ADDRESS,
+            core::ptr::null_mut(),
+            &mut addr as *mut u32 as *mut core::ffi::c_void,
+            &mut size,
+            0,
+        )
+    };
+    if cr == CR_SUCCESS && addr > 0 { Some(addr) } else { None }
+}
+
+/// Try to get the device interface path for a node as a USB hub.
+/// Returns None silently if the node is not a hub — used speculatively during tree walk.
+fn probe_hub_interface_path(inst: u32) -> Option<String> {
     let mut id_buf = [0u16; 512];
     let cr = unsafe {
-        CM_Get_Device_IDW(hub_inst, id_buf.as_mut_ptr(), id_buf.len() as u32, 0)
+        CM_Get_Device_IDW(inst, id_buf.as_mut_ptr(), id_buf.len() as u32, 0)
     };
     if cr != CR_SUCCESS {
-        eprintln!("note: get_hub_interface_path: CM_Get_Device_IDW failed cr={cr:#x} for inst={hub_inst}");
         return None;
     }
 
     let id_end = id_buf.iter().position(|&c| c == 0).unwrap_or(id_buf.len());
-    let hub_id_str = String::from_utf16_lossy(&id_buf[..id_end]);
-    eprintln!("note: get_hub_interface_path: hub_inst={hub_inst} id={hub_id_str:?}");
-
-    // Build a null-terminated wide string for the CM APIs.
     let mut id_wide: Vec<u16> = id_buf[..id_end].to_vec();
     id_wide.push(0);
 
-    // Query the required list size.
     let mut list_size: u32 = 0;
     let cr = unsafe {
         CM_Get_Device_Interface_List_SizeW(
@@ -428,11 +417,9 @@ fn get_hub_interface_path(hub_inst: u32) -> Option<String> {
         )
     };
     if cr != CR_SUCCESS || list_size <= 1 {
-        eprintln!("note: get_hub_interface_path: list size cr={cr:#x} list_size={list_size} for {hub_id_str:?}");
         return None;
     }
 
-    // Retrieve the multi-string interface list.
     let mut list_buf: Vec<u16> = vec![0u16; list_size as usize];
     let cr = unsafe {
         CM_Get_Device_Interface_ListW(
@@ -447,7 +434,6 @@ fn get_hub_interface_path(hub_inst: u32) -> Option<String> {
         return None;
     }
 
-    // The first null-terminated string in the multi-string list is the hub path.
     let path_end = list_buf.iter().position(|&c| c == 0).unwrap_or(list_buf.len());
     if path_end == 0 {
         return None;
