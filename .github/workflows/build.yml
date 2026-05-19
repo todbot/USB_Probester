@@ -278,20 +278,6 @@ jobs:
           && env.KEYCHAIN_PATH != ''
         run: security delete-keychain "$KEYCHAIN_PATH" || true
 
-      # ── Upload build artifacts ───────────────────────────────────────────────
-      - name: Upload CLI to release
-        if: inputs.upload_to_release && steps.latest-release.outputs.id != ''
-        shell: bash
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          cli_bin="target/release/usb-probester-cli"
-          if [ -f "$cli_bin" ]; then
-            tag=$(gh api "repos/$GITHUB_REPOSITORY/releases/${{ steps.latest-release.outputs.id }}" --jq '.tag_name')
-            os=$([ "$RUNNER_OS" = "macOS" ] && echo "macos-aarch64" || echo "linux-x86_64")
-            gh release upload --clobber "$tag" "$cli_bin#usb-probester-cli-${os}"
-          fi
-
       # ── Stage artifacts with canonical names ────────────────────────────────
       - name: Stage artifacts
         id: stage
@@ -345,3 +331,18 @@ jobs:
           name: ${{ steps.stage.outputs.cli_base }}
           path: ${{ steps.stage.outputs.cli_dir }}/
           if-no-files-found: warn
+
+      # ── Upload build artifacts to release ───────────────────────────────────
+      - name: Upload CLI to release
+        if: inputs.upload_to_release && steps.latest-release.outputs.id != ''
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tag=$(gh api "repos/$GITHUB_REPOSITORY/releases/${{ steps.latest-release.outputs.id }}" --jq '.tag_name')
+          cli_ext=$([ "$RUNNER_OS" = "Windows" ] && echo ".exe" || echo "")
+          cli_src="${{ steps.stage.outputs.cli_dir }}/usb-probester-cli${cli_ext}"
+          cli_dst="${{ steps.stage.outputs.cli_base }}${cli_ext}"
+          if [ -f "$cli_src" ]; then
+            gh release upload --clobber "$tag" "${cli_src}#${cli_dst}"
+          fi
