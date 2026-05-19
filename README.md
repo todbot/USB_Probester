@@ -5,7 +5,7 @@ device descriptors, configuration descriptors, interface and endpoint
 details, and parsed HID report descriptors. Spiritual successor to Apple's
 __`USB Prober.app`__.
 
-Also ships a [standalone CLI (`usb-probester-cli`)](#commandline-tool-usb-probester-cli) 
+Also ships a standalone CLI ([`usb-probester-cli`](#commandline-tool-usb-probester-cli))
 for text or JSON output.
 
 <img src="./docs/screenshot1.png" width="700">
@@ -83,10 +83,6 @@ usb-probester-cli --format json --vid 0x27b8
 
 # Omit USB hubs
 usb-probester-cli --hide-hubs
-
-# Build the standalone release binary, see below
-cargo build --release -p usb-cli
-# → target/release/usb-probester-cli
 ```
 
 --- 
@@ -138,7 +134,7 @@ npm run tauribuild
 
 # Build CLI tool usb-probester-cli
 cargo build --release -p usb-cli
-./target/release/usb-probester-cli
+./target/release/usb-probester-cli -h
 
 ```
 ### OS-specific requirements:
