@@ -2,11 +2,14 @@ use clap::{Parser, ValueEnum};
 use usb_types::{usb_class, *};
 
 #[derive(Parser)]
-#[command(name = "usb-probester-cli", about = "Dump USB device information")]
+#[command(name = "usb-probester-cli", about = "List USB devices (lsusb-style by default)")]
 struct Cli {
-    /// Output format
-    #[arg(short, long, value_enum, default_value = "tree")]
-    format: Format,
+    /// Show full USB Prober-style descriptor dump
+    #[arg(long)]
+    dump: bool,
+    /// Output format (overrides --dump if specified)
+    #[arg(short, long, value_enum)]
+    format: Option<Format>,
     /// Omit USB hubs from output
     #[arg(long)]
     hide_hubs: bool,
@@ -43,9 +46,41 @@ fn main() {
     if let Some(pid) = cli.pid {
         devices.retain(|d| d.device_descriptor.id_product == pid);
     }
-    match cli.format {
-        Format::Tree => print!("{}", usb_formatter::format_devices(&devices)),
-        Format::Json => println!("{}", serde_json::to_string_pretty(&devices).expect("serialize failed")),
+    match (cli.dump, &cli.format) {
+        (_, Some(Format::Json)) => println!("{}", serde_json::to_string_pretty(&devices).expect("serialize failed")),
+        (true, _) | (_, Some(Format::Tree)) => print!("{}", usb_formatter::format_devices(&devices)),
+        (false, None) => print_lsusb(&devices),
+    }
+}
+
+fn get_string(device: &UsbDevice, index: u8) -> &str {
+    if index == 0 { return ""; }
+    device.strings.iter()
+        .find(|s| s.index == index)
+        .map(|s| s.value.as_str())
+        .unwrap_or("")
+}
+
+fn print_lsusb(devices: &[UsbDevice]) {
+    for device in devices {
+        let dd = &device.device_descriptor;
+        let mfg = get_string(device, dd.i_manufacturer);
+        let product = get_string(device, dd.i_product);
+        let name = match (mfg.is_empty(), product.is_empty()) {
+            (false, false) => format!("{mfg} {product}"),
+            (false, true)  => mfg.to_string(),
+            (true,  false) => product.to_string(),
+            (true,  true)  => String::new(),
+        };
+        println!(
+            "Bus {:03} Dev {:15}: ID {:04x}:{:04x}  {}",
+            device.bus_number,
+            device.location_id,
+            dd.id_vendor,
+            dd.id_product,
+            name,
+        );
+        print_lsusb(&device.children);
     }
 }
 
