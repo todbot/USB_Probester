@@ -1,4 +1,5 @@
 use clap::{Parser, ValueEnum};
+use usb_ids::FromId;
 use usb_types::{usb_class, *};
 
 #[derive(Parser)]
@@ -64,12 +65,29 @@ fn get_string(device: &UsbDevice, index: u8) -> &str {
 fn print_lsusb(devices: &[UsbDevice]) {
     for device in devices {
         let dd = &device.device_descriptor;
-        let mfg = get_string(device, dd.i_manufacturer);
-        let product = get_string(device, dd.i_product);
+        let mfg_str = get_string(device, dd.i_manufacturer);
+        let product_str = get_string(device, dd.i_product);
+
+        let db_vendor = usb_ids::Vendor::from_id(dd.id_vendor);
+        let mfg = if !mfg_str.is_empty() {
+            mfg_str.to_string()
+        } else {
+            db_vendor.map(|v| v.name()).unwrap_or("").to_string()
+        };
+        let product = if !product_str.is_empty() {
+            product_str.to_string()
+        } else {
+            db_vendor
+                .and_then(|_| usb_ids::Device::from_vid_pid(dd.id_vendor, dd.id_product))
+                .map(|d| d.name())
+                .unwrap_or("")
+                .to_string()
+        };
+
         let name = match (mfg.is_empty(), product.is_empty()) {
             (false, false) => format!("{mfg} {product}"),
-            (false, true)  => mfg.to_string(),
-            (true,  false) => product.to_string(),
+            (false, true)  => mfg,
+            (true,  false) => product,
             (true,  true)  => String::new(),
         };
         println!(

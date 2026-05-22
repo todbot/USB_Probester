@@ -12,6 +12,7 @@ usb-types = { path = "../usb-types" }
 usb-formatter = { path = "../usb-formatter" }
 serde_json = { workspace = true }
 clap = { version = "4", features = ["derive"] }
+usb-ids = "1.2025.2"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 usb-collector-macos = { path = "../usb-collector-macos" }
