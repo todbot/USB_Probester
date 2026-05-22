@@ -69,9 +69,27 @@ output format and correctness.
 A standalone `usb-probester-cli` binary is included that doesn't require
 the GUI or a web runtime.
 
+With no arguments it prints an `lsusb`-style device list:
+
+```
+$ usb-probester-cli
+Bus 001 Dev 1-1.3.4.4      : ID 239a:802c  Adafruit Industries LLC ItsyBitsy M4 Express
+Bus 001 Dev 1-1.3          : ID 0409:005a  NEC Corp. HighSpeed Hub
+Bus 001 Dev 1-1            : ID 2109:3431  VIA Labs, Inc. USB2.0 Hub
+Bus 002 Dev 2-2            : ID 04e8:6300  Samsung Flash Drive FIT
+Bus 001 Dev 1-1.3.4.3      : ID 27b8:01ed  ThingM blink(1) mk3
+```
+
+Vendor and product names come from the device's own string descriptors when
+available, falling back to the bundled [USB ID database](https://usb-ids.gowdy.us/)
+for devices that don't report strings (no network access or OS package required).
+
 ```bash
-# Mac USB Prober-style text tree (default)
+# lsusb-style list (default)
 usb-probester-cli
+
+# Full Mac USB Prober-style descriptor dump
+usb-probester-cli --dump
 
 # Pretty-printed JSON
 usb-probester-cli --format json
@@ -317,6 +335,7 @@ USB enumeration uses two passes:
 - [specta](https://github.com/oscartbeaumont/specta) + [tauri-specta](https://github.com/oscartbeaumont/tauri-specta) — automatic TypeScript type generation from Rust types
 - [plist](https://crates.io/crates/plist) — plist parsing for ioreg XML output
 - [clap](https://crates.io/crates/clap) — CLI argument parsing for `usb-probester-cli`
+- [usb-ids](https://crates.io/crates/usb-ids) — bundled USB ID database for vendor/product name lookup
 
 ### Reference implementations
 
