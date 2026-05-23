@@ -234,7 +234,6 @@ jobs:
           # the corresponding checkbox is ticked; empty otherwise → no signing.
         with:
           args: ${{ matrix.tauri-args }}
-          releaseId: ${{ steps.latest-release.outputs.id }}
 
       - name: Build CLI
         shell: bash
@@ -293,24 +292,26 @@ jobs:
             os=windows; arch=x86_64; cli_ext=".exe"
           fi
 
-          gui_base="USB_Probester_${os}_${version}_${arch}"
           cli_base="usb-probester-cli_${os}_${version}_${arch}"
-          echo "gui_base=$gui_base" >> "$GITHUB_OUTPUT"
           echo "cli_base=$cli_base" >> "$GITHUB_OUTPUT"
 
           gui_dir="$RUNNER_TEMP/gui"
           mkdir -p "$gui_dir"
-          while IFS= read -r -d '' f; do
-            case "$f" in
-              *.app.tar.gz) ext="app.tar.gz" ;;
-              *)             ext="${f##*.}" ;;
-            esac
-            cp "$f" "$gui_dir/${gui_base}.${ext}"
-          done < <(find target -path "*/bundle/*" \
-            \( -name "*.dmg" -o -name "*.app.tar.gz" -o -name "*.deb" \
-               -o -name "*.AppImage" -o -name "*.rpm" \
-               -o -name "*.msi" -o -name "*-setup.exe" \) -print0)
+          p="USB_Probester_${version}_${os}"
+          find_b() { find target -path "*/bundle/*" -name "$1" -print0; }
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            find_b "*.dmg"        | while IFS= read -r -d '' f; do cp "$f" "$gui_dir/${p}_universal.dmg";         done
+            find_b "*.app.tar.gz" | while IFS= read -r -d '' f; do cp "$f" "$gui_dir/${p}_universal.app.tar.gz"; done
+          elif [ "$RUNNER_OS" = "Linux" ]; then
+            find_b "*.deb"      | while IFS= read -r -d '' f; do cp "$f" "$gui_dir/${p}_amd64.deb";      done
+            find_b "*.AppImage" | while IFS= read -r -d '' f; do cp "$f" "$gui_dir/${p}_amd64.AppImage"; done
+            find_b "*.rpm"      | while IFS= read -r -d '' f; do cp "$f" "$gui_dir/${p}_amd64.rpm";      done
+          else
+            find_b "*-setup.exe" | while IFS= read -r -d '' f; do cp "$f" "$gui_dir/${p}_x64-setup.exe";    done
+            find_b "*.msi"       | while IFS= read -r -d '' f; do cp "$f" "$gui_dir/${p}_x64_en-US.msi";   done
+          fi
           echo "gui_dir=$gui_dir" >> "$GITHUB_OUTPUT"
+          echo "gui_artifact=USB_Probester_${os}_${version}" >> "$GITHUB_OUTPUT"
 
           cli_dir="$RUNNER_TEMP/cli"
           mkdir -p "$cli_dir"
@@ -321,7 +322,7 @@ jobs:
       - name: Upload GUI artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ steps.stage.outputs.gui_base }}
+          name: ${{ steps.stage.outputs.gui_artifact }}
           path: ${{ steps.stage.outputs.gui_dir }}/
           if-no-files-found: warn
 
@@ -333,6 +334,17 @@ jobs:
           if-no-files-found: warn
 
       # ── Upload build artifacts to release ───────────────────────────────────
+      - name: Upload GUI to release
+        if: inputs.upload_to_release && steps.latest-release.outputs.id != ''
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tag=$(gh api "repos/$GITHUB_REPOSITORY/releases/${{ steps.latest-release.outputs.id }}" --jq '.tag_name')
+          for f in "${{ steps.stage.outputs.gui_dir }}"/*; do
+            [ -f "$f" ] && gh release upload --clobber "$tag" "$f"
+          done
+
       - name: Upload CLI to release
         if: inputs.upload_to_release && steps.latest-release.outputs.id != ''
         shell: bash
@@ -340,9 +352,11 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           tag=$(gh api "repos/$GITHUB_REPOSITORY/releases/${{ steps.latest-release.outputs.id }}" --jq '.tag_name')
+          cli_src="${{ steps.stage.outputs.cli_dir }}/usb-probester-cli"
+          cli_base="${{ steps.stage.outputs.cli_base }}"
           cli_ext=$([ "$RUNNER_OS" = "Windows" ] && echo ".exe" || echo "")
-          cli_src="${{ steps.stage.outputs.cli_dir }}/usb-probester-cli${cli_ext}"
-          cli_dst="${{ steps.stage.outputs.cli_base }}${cli_ext}"
-          if [ -f "$cli_src" ]; then
-            gh release upload --clobber "$tag" "${cli_src}#${cli_dst}"
+          cli_upload="$RUNNER_TEMP/${cli_base}.zip"
+          zip -j "$cli_upload" "${cli_src}${cli_ext}"
+          if [ -f "$cli_upload" ]; then
+            gh release upload --clobber "$tag" "$cli_upload"
           fi
