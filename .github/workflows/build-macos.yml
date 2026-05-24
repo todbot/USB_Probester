@@ -26,6 +26,7 @@ jobs:
       contents: write
 
     steps:
+      - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-build
         with:
           rust-targets: aarch64-apple-darwin,x86_64-apple-darwin

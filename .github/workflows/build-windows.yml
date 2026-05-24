@@ -22,6 +22,7 @@ jobs:
       contents: write
 
     steps:
+      - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-build
 
       - name: Cache Trusted Signing NuGet package
