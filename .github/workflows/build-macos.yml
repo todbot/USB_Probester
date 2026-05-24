@@ -1,0 +1,115 @@
+name: Build macOS
+
+on:
+  workflow_dispatch:
+    inputs:
+      sign_macos:
+        description: 'Sign macOS app and CLI'
+        type: boolean
+        default: false
+      notarize_macos:
+        description: 'Notarize macOS app and CLI (requires Sign macOS)'
+        type: boolean
+        default: false
+      upload_to_release:
+        description: 'Upload to the latest GitHub release'
+        type: boolean
+        default: false
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    runs-on: macos-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: ./.github/actions/setup-build
+        with:
+          rust-targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - name: Import macOS signing certificate
+        if: inputs.sign_macos
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        run: |
+          KEYCHAIN_PATH="$RUNNER_TEMP/build.keychain"
+          KEYCHAIN_PASSWORD="$(openssl rand -base64 20)"
+          echo "KEYCHAIN_PATH=$KEYCHAIN_PATH" >> "$GITHUB_ENV"
+          echo "KEYCHAIN_PASSWORD=$KEYCHAIN_PASSWORD" >> "$GITHUB_ENV"
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+          echo "$APPLE_CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security import "$RUNNER_TEMP/cert.p12" \
+            -k "$KEYCHAIN_PATH" \
+            -P "$APPLE_CERTIFICATE_PASSWORD" \
+            -T /usr/bin/codesign
+          rm "$RUNNER_TEMP/cert.p12"
+
+          security list-keychain -d user -s "$KEYCHAIN_PATH"
+          security set-key-partition-list \
+            -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+      - name: Set macOS signing env
+        if: inputs.sign_macos
+        run: echo "APPLE_SIGNING_IDENTITY=${{ secrets.APPLE_SIGNING_IDENTITY }}" >> "$GITHUB_ENV"
+
+      - name: Set macOS notarization env
+        if: inputs.notarize_macos
+        run: |
+          echo "APPLE_ID=${{ secrets.APPLE_ID }}" >> "$GITHUB_ENV"
+          echo "APPLE_PASSWORD=${{ secrets.APPLE_PASSWORD }}" >> "$GITHUB_ENV"
+          echo "APPLE_TEAM_ID=${{ secrets.APPLE_TEAM_ID }}" >> "$GITHUB_ENV"
+
+      - name: Build Tauri app
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          args: --target universal-apple-darwin
+
+      - name: Build CLI
+        shell: bash
+        run: |
+          cargo build --release -p usb-cli --target aarch64-apple-darwin
+          cargo build --release -p usb-cli --target x86_64-apple-darwin
+          lipo -create -output target/release/usb-probester-cli \
+            target/aarch64-apple-darwin/release/usb-probester-cli \
+            target/x86_64-apple-darwin/release/usb-probester-cli
+
+      - name: Sign macOS CLI binary
+        if: inputs.sign_macos
+        run: |
+          codesign --sign "$APPLE_SIGNING_IDENTITY" \
+            --options runtime \
+            --timestamp \
+            --force \
+            target/release/usb-probester-cli
+
+      - name: Notarize macOS CLI binary
+        if: inputs.notarize_macos
+        run: |
+          ditto -c -k --keepParent target/release/usb-probester-cli \
+            "$RUNNER_TEMP/usb-probester-cli-notarize.zip"
+          xcrun notarytool submit "$RUNNER_TEMP/usb-probester-cli-notarize.zip" \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID" \
+            --wait
+
+      - name: Delete macOS build keychain
+        if: always() && inputs.sign_macos && env.KEYCHAIN_PATH != ''
+        run: security delete-keychain "$KEYCHAIN_PATH" || true
+
+      - uses: ./.github/actions/stage-and-upload
+        with:
+          os: macos
+          arch: universal
+          upload_to_release: ${{ inputs.upload_to_release }}
+          token: ${{ secrets.GITHUB_TOKEN }}

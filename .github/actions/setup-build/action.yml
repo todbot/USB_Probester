@@ -1,0 +1,38 @@
+name: Setup build environment
+description: Checkout, Node, Rust toolchain, and caches.
+
+inputs:
+  rust-targets:
+    description: Comma-separated Rust targets to install (optional)
+    required: false
+    default: ''
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/checkout@v4
+
+    - uses: actions/setup-node@v4
+      with:
+        node-version: 20
+        cache: npm
+
+    - uses: dtolnay/rust-toolchain@stable
+      with:
+        targets: ${{ inputs.rust-targets }}
+
+    - uses: Swatinem/rust-cache@v2
+      with:
+        workspaces: . -> target
+
+    - name: Cache node_modules
+      id: cache-node-modules
+      uses: actions/cache@v4
+      with:
+        path: node_modules
+        key: node-modules-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+    - name: Install frontend dependencies
+      if: steps.cache-node-modules.outputs.cache-hit != 'true'
+      shell: bash
+      run: npm ci
