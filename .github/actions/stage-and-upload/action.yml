@@ -1,0 +1,113 @@
+name: Stage and upload artifacts
+description: Rename build outputs and upload to Actions artifacts and optionally to a GitHub release.
+
+inputs:
+  os:
+    description: 'Target OS for naming and file-type detection: macos, linux, or windows'
+    required: true
+  arch:
+    description: 'Target architecture for naming: universal, amd64, arm64, x86_64, x64, etc.'
+    required: true
+  upload_to_release:
+    description: Upload to the latest GitHub release
+    required: false
+    default: 'false'
+  token:
+    description: GitHub token (required when upload_to_release is true)
+    required: false
+    default: ''
+
+runs:
+  using: composite
+  steps:
+    - name: Get latest release ID
+      id: latest-release
+      if: inputs.upload_to_release == 'true'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+      run: |
+        id=$(gh api "repos/$GITHUB_REPOSITORY/releases" --jq '.[0].id')
+        echo "id=$id" >> "$GITHUB_OUTPUT"
+
+    - name: Stage artifacts
+      id: stage
+      shell: bash
+      run: |
+        version=$(node -p "require('./src-tauri/tauri.conf.json').version")
+        os="${{ inputs.os }}"
+        arch="${{ inputs.arch }}"
+        cli_ext="${{ inputs.os == 'windows' && '.exe' || '' }}"
+
+        cli_base="usb-probester-cli_${os}_${version}_${arch}"
+        echo "cli_base=$cli_base" >> "$GITHUB_OUTPUT"
+
+        gui_dir="$RUNNER_TEMP/gui"
+        mkdir -p "$gui_dir"
+        p="USB_Probester_${version}_${os}"
+        find_b() { find target -path "*/bundle/*" -name "$1" -print0; }
+        if [ "$os" = "macos" ]; then
+          find_b "*.dmg"        | while IFS= read -r -d '' f; do cp "$f" "$gui_dir/${p}_${arch}.dmg";         done
+          find_b "*.app.tar.gz" | while IFS= read -r -d '' f; do cp "$f" "$gui_dir/${p}_${arch}.app.tar.gz"; done
+        elif [ "$os" = "windows" ]; then
+          find_b "*-setup.exe" | while IFS= read -r -d '' f; do cp "$f" "$gui_dir/${p}_${arch}-setup.exe";  done
+          find_b "*.msi"       | while IFS= read -r -d '' f; do cp "$f" "$gui_dir/${p}_${arch}_en-US.msi"; done
+        else        
+          find_b "*.deb"      | while IFS= read -r -d '' f; do cp "$f" "$gui_dir/${p}_${arch}.deb";      done
+          find_b "*.AppImage" | while IFS= read -r -d '' f; do cp "$f" "$gui_dir/${p}_${arch}.AppImage"; done
+          find_b "*.rpm"      | while IFS= read -r -d '' f; do cp "$f" "$gui_dir/${p}_${arch}.rpm";      done
+        fi
+        echo "gui_dir=$gui_dir" >> "$GITHUB_OUTPUT"
+        echo "gui_artifact=USB_Probester_${os}_${arch}_${version}" >> "$GITHUB_OUTPUT"
+
+        cli_dir="$RUNNER_TEMP/cli"
+        mkdir -p "$cli_dir"
+        cp "target/release/usb-probester-cli${cli_ext}" \
+           "$cli_dir/usb-probester-cli${cli_ext}"
+        echo "cli_dir=$cli_dir" >> "$GITHUB_OUTPUT"
+
+    - name: Upload GUI artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ steps.stage.outputs.gui_artifact }}
+        path: ${{ steps.stage.outputs.gui_dir }}/
+        if-no-files-found: warn
+
+    - name: Upload CLI artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ steps.stage.outputs.cli_base }}
+        path: ${{ steps.stage.outputs.cli_dir }}/
+        if-no-files-found: warn
+
+    - name: Upload GUI to release
+      if: inputs.upload_to_release == 'true' && steps.latest-release.outputs.id != ''
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+      run: |
+        tag=$(gh api "repos/$GITHUB_REPOSITORY/releases/${{ steps.latest-release.outputs.id }}" --jq '.tag_name')
+        for f in "${{ steps.stage.outputs.gui_dir }}"/*; do
+          [ -f "$f" ] && gh release upload --clobber "$tag" "$f"
+        done
+
+    - name: Upload CLI to release
+      if: inputs.upload_to_release == 'true' && steps.latest-release.outputs.id != ''
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+      run: |
+        tag=$(gh api "repos/$GITHUB_REPOSITORY/releases/${{ steps.latest-release.outputs.id }}" --jq '.tag_name')
+        cli_src="${{ steps.stage.outputs.cli_dir }}/usb-probester-cli"
+        cli_base="${{ steps.stage.outputs.cli_base }}"
+        cli_upload="$RUNNER_TEMP/${cli_base}.zip"
+        if [ "${{ inputs.os }}" = "windows" ]; then
+          win_src=$(cygpath -w "${cli_src}.exe")
+          win_zip=$(cygpath -w "$cli_upload")
+          powershell.exe -Command "Compress-Archive -LiteralPath '$win_src' -DestinationPath '$win_zip'"
+        else
+          zip -j "$cli_upload" "$cli_src"
+        fi
+        if [ -f "$cli_upload" ]; then
+          gh release upload --clobber "$tag" "$cli_upload"
+        fi

@@ -1,0 +1,47 @@
+name: Build Linux
+
+on:
+  workflow_dispatch:
+    inputs:
+      upload_to_release:
+        description: 'Upload to the latest GitHub release'
+        type: boolean
+        default: false
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+
+    steps:
+      - uses: ./.github/actions/setup-build
+
+      - name: Install Linux system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            pkg-config \
+            libudev-dev \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf
+
+      - name: Build Tauri app
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build CLI
+        run: cargo build --release -p usb-cli
+
+      - uses: ./.github/actions/stage-and-upload
+        with:
+          os: linux
+          arch: amd64
+          upload_to_release: ${{ inputs.upload_to_release }}
+          token: ${{ secrets.GITHUB_TOKEN }}

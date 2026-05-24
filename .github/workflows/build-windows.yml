@@ -1,0 +1,89 @@
+name: Build Windows
+
+on:
+  workflow_dispatch:
+    inputs:
+      sign_windows:
+        description: 'Sign Windows installer'
+        type: boolean
+        default: false
+      upload_to_release:
+        description: 'Upload to the latest GitHub release'
+        type: boolean
+        default: false
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: ./.github/actions/setup-build
+
+      - name: Cache Trusted Signing NuGet package
+        if: inputs.sign_windows
+        id: cache-tsc
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/tsc-pkg
+          key: tsc-nuget-1.0.60
+
+      - name: Configure Azure Trusted Signing
+        if: inputs.sign_windows
+        shell: pwsh
+        run: |
+          $pkgDir = "$env:RUNNER_TEMP\tsc-pkg"
+          if ("${{ steps.cache-tsc.outputs.cache-hit }}" -ne "true") {
+            nuget install Microsoft.Trusted.Signing.Client `
+              -Version 1.0.60 -OutputDirectory $pkgDir -NonInteractive
+          }
+
+          $dlibPath = (Get-ChildItem $pkgDir -Recurse -Filter "Azure.CodeSigning.Dlib.dll" |
+            Where-Object { $_.FullName -match "x64" } |
+            Select-Object -First 1).FullName
+          if (-not $dlibPath) { throw "Azure.CodeSigning.Dlib.dll not found" }
+
+          $meta = [ordered]@{
+            Endpoint               = "${{ secrets.AZURE_TRUSTED_SIGNING_ENDPOINT }}"
+            CodeSigningAccountName = "${{ secrets.AZURE_TRUSTED_SIGNING_ACCOUNT }}"
+            CertificateProfileName = "${{ secrets.AZURE_TRUSTED_SIGNING_CERT_PROFILE }}"
+          } | ConvertTo-Json
+          $metaPath = "$env:RUNNER_TEMP\ats-metadata.json"
+          $meta | Set-Content $metaPath
+
+          $signtool = (Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin" `
+            -Recurse -Filter "signtool.exe" |
+            Where-Object { $_.FullName -match "x64" } |
+            Sort-Object LastWriteTime -Descending |
+            Select-Object -First 1).FullName
+          if (-not $signtool) { throw "signtool.exe not found" }
+
+          $cmd = "`"$signtool`" sign /fd SHA256" +
+                 " /tr http://timestamp.acs.microsoft.com /td SHA256" +
+                 " /dlib `"$dlibPath`"" +
+                 " /dmdf `"$metaPath`""
+          echo "TAURI_SIGNING_WINDOWS_SIGN_COMMAND=$cmd" >> $env:GITHUB_ENV
+
+          echo "AZURE_TENANT_ID=${{ secrets.AZURE_TENANT_ID }}"    >> $env:GITHUB_ENV
+          echo "AZURE_CLIENT_ID=${{ secrets.AZURE_CLIENT_ID }}"    >> $env:GITHUB_ENV
+          echo "AZURE_CLIENT_SECRET=${{ secrets.AZURE_CLIENT_SECRET }}" >> $env:GITHUB_ENV
+
+      - name: Build Tauri app
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build CLI
+        shell: bash
+        run: cargo build --release -p usb-cli
+
+      - uses: ./.github/actions/stage-and-upload
+        with:
+          os: windows
+          arch: x64
+          upload_to_release: ${{ inputs.upload_to_release }}
+          token: ${{ secrets.GITHUB_TOKEN }}
