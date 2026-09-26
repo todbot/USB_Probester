@@ -15,8 +15,9 @@ See `PLAN.md` for the full architecture.
   - `crates/usb-collector-linux` — `/sys`-based collector (cfg-gated)
   - `crates/usb-collector-windows` — nusb-based collector (cfg-gated); partial descriptor support
   - `crates/hid-parser` — platform-agnostic HID report descriptor parser
+  - `crates/usb-formatter` — Mac USB Prober-style text renderer
   - `crates/usb-cli` — standalone CLI binary (`usb-probester-cli`)
-  - `src-tauri` — Tauri shell, backend commands, text formatter
+  - `src-tauri` — Tauri shell, backend commands
 - Platform code behind `cfg` gates; frontend never sees platform-specific shapes.
 - Prefer parsing raw descriptor bytes over scraping pretty-printed tool output.
 - Capture real OS output as test fixtures in `tests/fixtures/` so unit tests
@@ -50,12 +51,22 @@ Reads everything from sysfs — no device open, no elevated privileges:
 - HID report descriptors from `<dev>/<dev>:<cfg>.<iface>/0003:<VID>:<PID>.<N>/report_descriptor`
 - `location_id` is the sysfs basename (e.g. `"2-4"`, `"2-2.3"`)
 
-## Text formatter
+## Dependency pins
 
-`src-tauri/src/formatter.rs` contains the Mac USB Prober-style text renderer,
-shared by both the Tauri "Save Output" command and the CLI binary.
-The same logic also lives in `crates/usb-cli/src/main.rs` (standalone copy
-for the CLI; these should be kept in sync if the format changes).
+`Cargo.lock` holds tauri 2.11.6 with tauri-macros 2.6.3, tauri-runtime 2.11.3
+and tauri-runtime-wry 2.11.4. Those three satisfy tauri 2.11.6's caret ranges
+but only compile against tauri 2.12.0, so **a bare `cargo update` breaks the
+build** (`UnexpectedMenuKind`, `Monitor: From<Vec<..>>`). Re-pin with
+`cargo update -p <crate> --precise <ver>` in the order runtime-wry, runtime,
+macros.
+
+The Rust side moves to 2.12.0 cleanly with no pins at all, but `@tauri-apps/api`
+must move with it or tauri rejects the major/minor mismatch. Do both halves
+together, then delete the pins.
+
+`[profile.release.build-override] strip = false` in the workspace `Cargo.toml`
+is load-bearing on macOS 27, not a leftover. Removing it breaks
+`cargo build --release` with "can't find crate for `<x>_derive`" errors.
 
 ## Useful commands
 
@@ -173,3 +184,15 @@ The GUI tree view uses the same hierarchy via `ClassSpecificNode` in `App.tsx`.
 ## Current focus
 
 All planned steps done. No blocking code issues remain.
+
+Verified working on macOS 27 (Golden Gate) against real hardware: enumeration,
+descriptor reads and the ioreg HID pass are unchanged from macOS 26.
+
+Known gaps, none blocking:
+- The workspace has one test function. The fixture
+  `crates/hid-parser/tests/golden_pico2_parsed.txt` has no harness driving it.
+- `cargo test --workspace` fails on macOS because the Linux collector's examples
+  can't compile when the crate is cfg'd out. Use `--lib --bins --tests`.
+- The notarized macOS CLI binary is never `xcrun stapler staple`d, so it needs
+  online verification on first run. The .app and .dmg are stapled by
+  tauri-action.
