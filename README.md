@@ -351,6 +351,6 @@ USB enumeration uses two passes:
 ### Related tools
 
 - [lsusb for Linux](https://linux.wiki/docs/commands/system-info/lsusb/) — Linux, no HID report descriptor usually
-- [lsusb for Mac OS X](https://github.com/jlhonora/lsusb) — macOS only, partial data, and broken since macOS 26
+- [lsusb for Mac OS X](https://github.com/jlhonora/lsusb) — macOS only, broken since macOS 26
 - [USBDeview](https://www.nirsoft.net/utils/usb_devices_view.html) — Windows-only
 - [USB Device Tree Viewer](https://www.uwe-sieber.de/usbtreeview_e.html) — Windows-only
