@@ -43,6 +43,11 @@ Apple quietly dropped it. The last version stopped working on modern macOS
 (Apple Silicon / macOS 12+), the download was removed from the developer portal,
 and no replacement was provided.
 
+The gap has since widened. As of macOS 26, `system_profiler SPUSBDataType`
+returns nothing; the replacement `SPUSBHostDataType` reports only host
+controllers, not the devices attached to them. macOS no longer ships any
+user-facing way to list connected USB devices, let alone their descriptors.
+
 USBProbester aims to fill that gap with a native, cross-platform tool that
 shows the same level of detail USB Prober did — and eventually more.
 
@@ -346,6 +351,6 @@ USB enumeration uses two passes:
 ### Related tools
 
 - [lsusb for Linux](https://linux.wiki/docs/commands/system-info/lsusb/) — Linux, no HID report descriptor usually
-- [lsusb for Mac OS X](https://github.com/jlhonora/lsusb) — macOS (pre-Tahoe) only and only partial data
+- [lsusb for Mac OS X](https://github.com/jlhonora/lsusb) — macOS only, partial data, and broken since macOS 26
 - [USBDeview](https://www.nirsoft.net/utils/usb_devices_view.html) — Windows-only
 - [USB Device Tree Viewer](https://www.uwe-sieber.de/usbtreeview_e.html) — Windows-only

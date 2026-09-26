@@ -8,4 +8,4 @@ usb-types = { path = "../usb-types" }
 hid-parser = { path = "../hid-parser" }
 serde = { workspace = true }
 serde_json = { workspace = true }
-nusb = "0.2.3"
+nusb = "0.2.7"

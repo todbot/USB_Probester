@@ -35,7 +35,7 @@ impl MacCollector {
 
     pub fn enumerate(&self) -> Result<Vec<UsbDevice>, CollectorError> {
         // Pass 2 first: build location_id → HID report descriptors map from ioreg.
-        let hid_map = collect_hid_descriptors()?;
+        let hid_map = collect_hid_descriptors();
 
         // Pass 1: nusb enumerates all devices, giving us topology + raw descriptor bytes.
         let mut result = Vec::new();
@@ -297,15 +297,32 @@ fn map_speed(speed: Option<nusb::Speed>) -> UsbSpeed {
 // Returns: location_id → HID interfaces on that device.
 // IOHIDInterface exposes LocationID (u32) matching the parent USB device's locationID.
 
-fn collect_hid_descriptors() -> Result<HashMap<u32, Vec<HidInterface>>, CollectorError> {
-    let out = Command::new("ioreg")
-        .args(["-a", "-c", "IOHIDInterface", "-l", "-r", "-w", "0"])
-        .output()?;
-
-    let root: Value = plist::from_bytes(&out.stdout)?;
+fn collect_hid_descriptors() -> HashMap<u32, Vec<HidInterface>> {
     let mut map: HashMap<u32, Vec<HidInterface>> = HashMap::new();
-    walk_hid(&root, &mut map);
-    Ok(map)
+
+    // ioreg prints nothing at all when no IOHIDInterface node exists, and "" is
+    // not a plist. Report descriptors are supplementary; never fail the listing.
+    let out = match Command::new("ioreg")
+        .args(["-a", "-c", "IOHIDInterface", "-l", "-r", "-w", "0"])
+        .output()
+    {
+        Ok(out) if out.status.success() && !out.stdout.is_empty() => out,
+        Ok(out) if !out.status.success() => {
+            eprintln!("warning: ioreg exited with {}; no HID descriptors", out.status);
+            return map;
+        }
+        Ok(_) => return map,
+        Err(e) => {
+            eprintln!("warning: could not run ioreg: {e}; no HID descriptors");
+            return map;
+        }
+    };
+
+    match plist::from_bytes::<Value>(&out.stdout) {
+        Ok(root) => walk_hid(&root, &mut map),
+        Err(e) => eprintln!("warning: could not parse ioreg output: {e}; no HID descriptors"),
+    }
+    map
 }
 
 fn walk_hid(value: &Value, map: &mut HashMap<u32, Vec<HidInterface>>) {
