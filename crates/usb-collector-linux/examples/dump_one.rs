@@ -2,9 +2,12 @@
 /// Validates nusb enumeration + sysfs descriptor parsing + HID collection.
 ///
 /// Usage: cargo run --example dump_one
+#[cfg(target_os = "linux")]
 use usb_collector_linux::LinuxCollector;
+#[cfg(target_os = "linux")]
 use usb_types::*;
 
+#[cfg(target_os = "linux")]
 fn main() {
     let devices = LinuxCollector::new()
         .enumerate()
@@ -22,6 +25,7 @@ fn main() {
     }
 }
 
+#[cfg(target_os = "linux")]
 fn print_device(d: &UsbDevice, depth: usize) {
     let indent = "  ".repeat(depth);
     let dd = &d.device_descriptor;
@@ -109,6 +113,12 @@ fn print_device(d: &UsbDevice, depth: usize) {
     }
 }
 
+#[cfg(target_os = "linux")]
 fn hex_line(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02X}")).collect::<Vec<_>>().join(" ")
+}
+
+#[cfg(not(target_os = "linux"))]
+fn main() {
+    eprintln!("dump_one is Linux-only");
 }

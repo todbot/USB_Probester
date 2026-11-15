@@ -11,15 +11,20 @@
 ///   # Save a snapshot and replay it later:
 ///   cp /sys/bus/usb/devices/2-2.3/descriptors blink1.bin
 ///   cargo run --example from_sysfs_file -- blink1.bin
+#[cfg(target_os = "linux")]
 use std::env;
+#[cfg(target_os = "linux")]
 use std::fs;
+#[cfg(target_os = "linux")]
 use usb_collector_linux::device_from_descriptor_bytes;
+#[cfg(target_os = "linux")]
 use usb_types::*;
 
 // ── Hardcoded fixture: ThingM blink(1) mk2 (27B8:01ED) ───────────────────────
 //
 // Captured from /sys/bus/usb/devices/2-2.3/descriptors on a Linux machine.
 // Device descriptor + 1 configuration (1 HID interface, 2 interrupt endpoints).
+#[cfg(target_os = "linux")]
 const BLINK1_DESCRIPTORS: &[u8] = &[
     // Device descriptor (18 bytes)
     0x12, 0x01, 0x00, 0x02, 0x00, 0x00, 0x00, 0x08,
@@ -39,12 +44,14 @@ const BLINK1_DESCRIPTORS: &[u8] = &[
 
 // HID report descriptor captured from
 // /sys/bus/usb/devices/2-2.3/2-2.3:1.0/0003:27B8:01ED.*/report_descriptor
+#[cfg(target_os = "linux")]
 const BLINK1_HID_REPORT: &[u8] = &[
     0x06, 0x00, 0xff, 0x09, 0x01, 0xa1, 0x01, 0x15,
     0x00, 0x26, 0xff, 0x00, 0x75, 0x08, 0x85, 0x01,
     0x95, 0x08, 0x09, 0x00, 0xb2, 0x02, 0x01, 0xc0,
 ];
 
+#[cfg(target_os = "linux")]
 fn main() {
     let args: Vec<String> = env::args().collect();
 
@@ -102,6 +109,7 @@ fn main() {
     }
 }
 
+#[cfg(target_os = "linux")]
 fn print_device(d: &UsbDevice) {
     let dd = &d.device_descriptor;
 
@@ -160,6 +168,12 @@ fn print_device(d: &UsbDevice) {
     }
 }
 
+#[cfg(target_os = "linux")]
 fn hex_line(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02X}")).collect::<Vec<_>>().join(" ")
+}
+
+#[cfg(not(target_os = "linux"))]
+fn main() {
+    eprintln!("from_sysfs_file is Linux-only");
 }

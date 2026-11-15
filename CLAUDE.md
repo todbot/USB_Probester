@@ -1,7 +1,8 @@
 # Project: USBProbester
 
 Cross-platform Tauri app recreating Apple's old `USB Prober.app`:
-hierarchical USB device tree with parsed Device descriptors,
+a flat list of all attached USB devices (hubs and the devices behind them
+are siblings), each with a hierarchical view of its parsed Device descriptor,
 Configuration descriptors, and HID Report descriptors.
 
 See `PLAN.md` for the full architecture.
@@ -51,18 +52,10 @@ Reads everything from sysfs — no device open, no elevated privileges:
 - HID report descriptors from `<dev>/<dev>:<cfg>.<iface>/0003:<VID>:<PID>.<N>/report_descriptor`
 - `location_id` is the sysfs basename (e.g. `"2-4"`, `"2-2.3"`)
 
-## Dependency pins
+## Build quirks
 
-`Cargo.lock` holds tauri 2.11.6 with tauri-macros 2.6.3, tauri-runtime 2.11.3
-and tauri-runtime-wry 2.11.4. Those three satisfy tauri 2.11.6's caret ranges
-but only compile against tauri 2.12.0, so **a bare `cargo update` breaks the
-build** (`UnexpectedMenuKind`, `Monitor: From<Vec<..>>`). Re-pin with
-`cargo update -p <crate> --precise <ver>` in the order runtime-wry, runtime,
-macros.
-
-The Rust side moves to 2.12.0 cleanly with no pins at all, but `@tauri-apps/api`
-must move with it or tauri rejects the major/minor mismatch. Do both halves
-together, then delete the pins.
+The `tauri` crate and `@tauri-apps/api` must share a major.minor version or
+tauri rejects the mismatch. Upgrade both halves together.
 
 `[profile.release.build-override] strip = false` in the workspace `Cargo.toml`
 is load-bearing on macOS 27, not a leftover. Removing it breaks
@@ -189,10 +182,14 @@ Verified working on macOS 27 (Golden Gate) against real hardware: enumeration,
 descriptor reads and the ioreg HID pass are unchanged from macOS 26.
 
 Known gaps, none blocking:
-- The workspace has one test function. The fixture
-  `crates/hid-parser/tests/golden_pico2_parsed.txt` has no harness driving it.
-- `cargo test --workspace` fails on macOS because the Linux collector's examples
-  can't compile when the crate is cfg'd out. Use `--lib --bins --tests`.
+- Tests are golden-file tests: `hid-parser` (pico2 report descriptor) and
+  `usb-formatter` (renders `tests/fixtures/mac{2,3}-usb-probester-out.json`
+  against `crates/usb-formatter/tests/golden_mac{2,3}.txt`). After an
+  intentional formatter change, regenerate with
+  `UPDATE_GOLDEN=1 cargo test -p usb-formatter --test fixtures`.
+- The mac2 JSON predates the macOS HID interface-number fix (all HID entries
+  say interface 0), so its golden only parses interface-#0 HID. mac3 (hub,
+  blink(1) mk3, CircuitPython Pico) covers HID on a non-zero interface.
 - The notarized macOS CLI binary is never `xcrun stapler staple`d, so it needs
   online verification on first run. The .app and .dmg are stapled by
   tauri-action.
