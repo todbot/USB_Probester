@@ -1578,7 +1578,7 @@ checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
 
 [[package]]
 name = "hid-parser"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "usb-types",
 ]
@@ -4514,7 +4514,7 @@ dependencies = [
 
 [[package]]
 name = "usb-cli"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "clap",
  "serde_json",
@@ -4528,7 +4528,7 @@ dependencies = [
 
 [[package]]
 name = "usb-collector-linux"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "hid-parser",
  "nusb",
@@ -4539,7 +4539,7 @@ dependencies = [
 
 [[package]]
 name = "usb-collector-macos"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "hid-parser",
  "nusb",
@@ -4550,7 +4550,7 @@ dependencies = [
 
 [[package]]
 name = "usb-collector-windows"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "hid-parser",
  "nusb",
@@ -4560,7 +4560,7 @@ dependencies = [
 
 [[package]]
 name = "usb-formatter"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "hid-parser",
  "serde_json",
@@ -4582,7 +4582,7 @@ dependencies = [
 
 [[package]]
 name = "usb-probester"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "futures-util",
  "hid-parser",
@@ -4606,7 +4606,7 @@ dependencies = [
 
 [[package]]
 name = "usb-types"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "serde",
  "specta",
