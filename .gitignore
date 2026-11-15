@@ -32,3 +32,4 @@ src-tauri/icons/ios
 src-tauri/icons/android
 
 .claude
+*.p12
